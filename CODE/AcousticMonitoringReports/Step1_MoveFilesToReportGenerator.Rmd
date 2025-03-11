@@ -1,0 +1,112 @@
+
+
+
+```{r dir_setup, include=FALSE}
+# Clear the R environment
+rm(list=ls())
+
+# Enter parameter of park unit
+pcode <- "CABR"
+
+# Setting up the main directories
+dirs <- c("./../..//LC_FILES", "./../..//SPLAT_FILES", "./../..//METRICS", 
+           "./../..//REPORTS", "./../..//MAPS_IMAGES")
+
+# Create park-specific subdirectories
+for (dir in dirs) {
+  # Specify the full path
+  full_path <- file.path(dir, pcode)
+  
+  # Check if subdirectory exists
+  if (!dir.exists(full_path)) {
+    # Create a new subdirectory if it doesn't exist
+    dir.create(full_path, recursive = TRUE)
+  }
+  
+  # Set the working directory
+  setwd(full_path)
+}
+```
+
+
+
+```{r lcfiles}
+# Collect LC files and copy to the specified folder
+
+lc_files <- choose.files(default = "", caption = "Select listening center files to be copied to reporting project folder")
+
+# Ensure lc_files is a list
+lc_files <- as.list(lc_files)
+
+# Copy each selected file to the LC_FILES directory
+sapply(lc_files, function(x) {
+  file.copy(from = x, to = file.path(dirs[1], pcode), copy.mode = TRUE)
+})
+
+```
+
+
+```{r splatfiles}
+# Collect SPLAT files and copy to the specified folder
+
+splat_files <- choose.files(default = "", caption = "Select SPLAT files to be copied to reporting project folder")
+
+# Ensure splat_files is a list
+splat_files <- as.list(splat_files)
+
+# Copy each selected SPLAT file to the SPLAT_FILES directory
+sapply(splat_files, function(x) {
+  file.copy(from = x, to = file.path(dirs[2], pcode), copy.mode = TRUE)
+})
+
+```
+
+```{r metricsfiles}
+# Collect METRICS files and copy to the specified folder
+
+metrics_files <- choose.files(default = "", caption = "Select METRICS files to be copied to reporting project folder")
+
+# Ensure metrics_files is a list
+metrics_files <- as.list(metrics_files)
+
+# Copy each selected METRICS file to the METRICS directory
+sapply(metrics_files, function(x) {
+  file.copy(from = x, to = file.path(dirs[3], pcode), copy.mode = TRUE)
+})
+
+```
+
+
+
+
+```{r pastecommon}
+# Copy common PNG files to the park-specific folder
+
+# List common PNG files in the specified directory
+commonpngfiles <- list.files(path = "./../..//MAPS_IMAGES/COMMON", pattern = "\\.png$", full.names = TRUE)
+
+# Define the destination park folder
+parkfolder <- file.path("./../..//MAPS_IMAGES", pcode)
+
+# Copy the PNG files to the park folder
+file.copy(from = commonpngfiles, to = parkfolder, copy.mode = TRUE)
+
+```
+
+```{r pastesitesmeta}
+# Copy common metadata files to the park-specific folder
+
+# List common metadata files (Excel) in the specified directory
+sitesmeta <- list.files(path = "./../..//MAPS_IMAGES/COMMON", pattern = "\\.xlsx$", full.names = TRUE)
+
+# Define the destination park folder
+parkfolder <- file.path("./../..//MAPS_IMAGES", pcode)
+
+# Copy the Excel files to the park folder
+file.copy(from = sitesmeta, to = parkfolder, copy.mode = TRUE)
+
+
+```
+
+
+

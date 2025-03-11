@@ -1,0 +1,1881 @@
+---
+title: "Acoustic Monitoring Report Data Exploration"
+author: "Erik Meyer"
+date: "`r Sys.Date()`"
+html_document:
+    theme: cosmo
+    toc: true
+    doc_depth: 3
+    code_folding: hide
+    toc_float: true
+    fig_caption: true
+documentclass: book
+params:
+  alpha_code:
+    label: "Enter Park Code:"
+    value: UNIT
+  season:
+    label: "Enter Season:"
+    value: Summer
+    input: radio
+    choices: [Fall, Winter, Spring, Summer]
+  year:
+    label: "Year"
+    value: 2019
+    input: slider
+    min: 2006
+    max: 2050
+    step: 1
+    sep: ""
+  lnatcalc:
+    label: "Was lnat calculated?"
+    value: "Yes"
+    input: select
+    choices: ["Yes", "No"]
+  notes: 
+    label: "Are there any notes you want to display for this report run?"
+    value: Add notes here
+    input: text
+  plottitle:
+    label: "Do you want titles on plots?"
+    value: "Yes"
+    input: select
+    choices: ["Yes", "No"]
+  plotHRDBA:
+    label: "Produce hourly dba plot? [T/F]"
+    value: TRUE
+    input: select
+    choices: [TRUE, FALSE]
+  plotTRUNCDBA:
+    label: "Produce truncated hourly dba plot? [T/F]"
+    value: TRUE
+    input: select
+    choices: [TRUE, FALSE]
+  plotFREQDBA:
+    label: "Produce frequency dba plot? [T/F]"
+    value: TRUE
+    input: select
+    choices: [TRUE, FALSE]
+  plotCONTOUR:
+    label: "Produce countour plot? [T/F]"
+    value: TRUE
+    input: select
+    choices: [TRUE, FALSE]
+  yMaxHr:
+    label: "What's the upper limit for the hourly graphs? (must be a multiple of 3)"
+    value: 70
+    input: slider
+    min: 50
+    max: 90
+    step: 3
+    sep: ""
+  yMaxHz:
+    label: "What's the upper limit for the frequency graphs? (must be a multiple of 3)"
+    value: 70
+    input: slider
+    min: 50
+    max: 90
+    step: 3
+    sep: ""
+  yMinHr:
+    label: "What's the lower limit for the hourly graphs? (must be a multiple of 3)"
+    value: 5
+    input: slider
+    min: 2
+    max: 15
+    step: 3
+    sep: ""
+  yMinHz:
+    label: "What's the lower limit for the frequency graphs? (must be a multiple of 3)"
+    value: -12
+    input: slider
+    min: -24
+    max: 24
+    step: 3
+    sep: ""
+  
+---
+
+
+### **Acoustic Monitoring Report Tables and Figures** 
+
+
+```{r setup, include=FALSE, warning=FALSE}
+
+# Clear the workspace
+# rm(list=ls())  # Uncomment this line if you want to clear the environment
+
+# List of required packages
+packages <- c("EnvStats", "reshape2", "ggplot2", "ggthemes", "pander", "plyr",
+              "lubridate", "readxl", "tcltk", "svDialogs", "tcltk2", "tidyverse", 
+              "vtable", "data.table", "ggpubr", "knitr", "readr", "sjmisc", 
+              "janitor", "dplyr", "DT", "tmap", "scales", "leaflet", 
+              "shiny", "rsconnect", "english", "kableExtra", "rlist", "jsonlite")
+
+# Load or install & load all required packages
+lapply(packages, function(pkg) {
+  if (!require(pkg, character.only = TRUE)) {
+    install.packages(pkg, dependencies = TRUE)
+    library(pkg, character.only = TRUE)
+  }
+})
+
+# Source additional scripts and data
+source("readMetrics.R")
+sourceid <- readRDS(file = "sourceid.rds")
+
+# Bring in updated NPS units JSON file
+npsunits <- jsonlite::fromJSON("https://irmaservices.nps.gov/Unit/v2/api/?format=json")
+```
+
+```{r, echo=FALSE, include=FALSE, warning=FALSE}
+# IMPORTANT: If No, go into metrics file and add a tab after Lnat for the Ambient section!
+# Example below L050 (21.0) is merged with Lnat (--.-) - add 1 tab to separate!
+# Ambient (dBA), Fall (n = 1072 hrs)
+# Lmin   L099   L090   Lnat    L050   L010   L001   Lmax   Leq
+# Day    17.0  17.6  18.5  --.-21.0  28.4  36.9  44.0  33.3
+# Night  17.0  17.5  18.3  --.-20.1  24.9  32.5  37.7  35.1
+
+##################################################
+
+# Define report directory and create it
+report_dir <- file.path("./../..//REPORTS", params$alpha_code)
+dir.create(file.path(report_dir, paste0(params$season, "_", params$year)))
+
+# Load list of LC and SPLAT files
+LLFiles <- list.files(path = paste0("./../..//LC_FILES/", params$alpha_code), pattern = ".*\\.txt", full.names = TRUE)
+lcenterfiles <- length(LLFiles) > 0
+
+SPLATFiles <- list.files(path = paste0("./../..//SPLAT_FILES/", params$alpha_code), pattern = ".*\\.txt", full.names = TRUE)
+splatfiles <- length(SPLATFiles) > 0
+
+# Determine if either files exist
+eitherfiles <- lcenterfiles | splatfiles
+season <- params$season
+
+```
+
+
+```{r read-data, message=FALSE, echo=FALSE, include=FALSE, warning=FALSE}
+# knitr::opts_chunk$set(warning = FALSE, message = FALSE)
+
+# Path to all metrics files
+path <- file.path("./../..//METRICS", params$alpha_code)
+
+# List all metrics files
+metricsFilesAll <- list.files(path = path, pattern = ".*\\.txt", full.names = TRUE)
+
+# Initialize empty metrics files list
+metricslist <- list()
+
+# Loop to create a list of metrics files for the specified season
+for (i in seq_along(metricsFilesAll)) {
+  mydata <- read_delim(file = metricsFilesAll[i], skip = 12, delim = "\t") # Create data frame of metrics files
+  
+  seasonexists <- mydata[mydata$`...1` %like% season, ] # Find specified season in metrics file data frame
+  seasonexistkeep <- ifelse(nrow(seasonexists) > 1, metricsFilesAll[i], NA) # Return metrics file path if data frame has > 1 row; else return NA
+  metricslist <- append(metricslist, list(seasonexistkeep)) # Append list of metrics files
+}
+
+# Filter out NA values to leave only the files containing the specified season
+metricsFiles <- unlist(metricslist[metricslist != "NA"], use.names = FALSE)
+
+# Create a list of metrics files years
+metricyear <- substr(basename(metricsFiles), 9, 12)
+
+# Extract a list of site names from the metrics files
+metricnames <- str_extract(basename(metricsFiles), "(?<=_)[^_]+(?=\\.txt$)")
+
+# Create a data frame of years and names of metrics files
+metricsdataframe <- data.frame(metricyear, metricnames)
+
+# Filter by the selected year from params
+metdframe <- filter(metricsdataframe, metricyear == params$year)
+
+# Create a list of site names for selected season and year
+names <- metdframe$metricnames
+
+# Count number of sites
+sitecount <- length(names)
+sitecount <- as.character(english(sitecount)) # Convert to English words
+
+# Create data frame of monitoring location names
+park <- data.frame(names)
+
+# Reduce to just one row
+park <- head(park, 1)
+
+# Create alpha code column and reduce to NPS unit code
+park$UnitCode <- substr(park[1], 1, 4)
+
+# Merge data frame; if the park needs to be added, it will merge, if not, it will keep existing NPS units RDS
+parknamemerge <- merge(park, npsunits, by = "UnitCode", all = FALSE)
+
+# Obtain park name and code
+parkname <- parknamemerge$FullName
+parkcode <- parknamemerge$UnitCode
+
+################################################################################
+
+# Create empty metrics files containing listening lab summaries
+metricslist_lc <- list()
+
+# Loop to create a list of metrics files for specified season
+for (i in seq_along(metricsFiles)) {
+  mydata <- read_delim(file = metricsFiles[i], skip = 12, delim = "\t") # Create data frame of metrics
+  
+  lcexists <- mydata[mydata$`...1` %like% "Listening Center", ] # Find "Listening Center" in metrics file
+  lcexistkeep <- ifelse(nrow(lcexists) > 1, metricsFiles[i], NA) # Return metrics file path if > 1 row; else return NA
+  metricslist_lc <- append(metricslist_lc, list(lcexistkeep)) # Append to the list of metrics files
+}
+
+# Filter out NA values to only files containing the specified season
+metricsFiles_lc <- unlist(metricslist_lc[metricslist_lc != "NA"], use.names = FALSE)
+
+################################################################################
+
+# Create empty metrics files containing SPLAT summaries
+metricslist_splat <- list()
+
+# Loop to create a list of metrics files for specified season
+for (i in seq_along(metricsFiles)) {
+  mydata <- read_delim(file = metricsFiles[i], skip = 12, delim = "\t") # Create data frame of metrics
+  
+  splatexists <- mydata[mydata$`...1` %like% "SPLAT", ] # Check for "SPLAT" in metrics file
+  splatexistkeep <- ifelse(nrow(splatexists) > 1, metricsFiles[i], NA) # Return metrics file path if > 1 row; else return NA
+  metricslist_splat <- append(metricslist_splat, list(splatexistkeep)) # Append to the list of metrics files
+}
+
+# Filter out NA values to only the files containing the specified season
+metricsFiles_splat <- unlist(metricslist_splat[metricslist_splat != "NA"], use.names = FALSE)
+
+################################################################################
+
+
+```
+
+ 
+
+**This report has been generated for park:** `r (parkname)`\n
+
+**Park unit code:** `r parkcode`\n
+
+**Monitoring location list:** `r (names)`\n
+
+**Monitoring season:** `r params$season` \n 
+
+**Monitoring year:** `r params$year` \n 
+
+**Notes for report?:** `r params$notes`\n
+
+```{r ambient-full, message=FALSE, echo=FALSE, include=FALSE, warning=FALSE}
+# This will be for a table to summarize noise sources and sound levels
+
+# Loop through each site name to read metrics and create data frames
+for (i in seq_along(names)) {
+  df_name <- paste("Ambdata_", names[[i]], sep = "")
+  assign(df_name, data.frame(readMetrics(metricsFiles[i], "ambFull", params$season)))
+}
+
+# List out created data sets with the time above for full frequency
+dflist <- mget(ls(pattern = "Amb.*a"))
+
+for (i in seq_along(dflist)) {
+  # Select daytime data
+  ambday <- dflist[[i]][1, c(6, 5)]  # columns of interest
+  colnames(ambday) <- c("$L_{A50}$ Day", "$L_{Anat}$ Day")  # Rename columns
+  
+  # Select nighttime data
+  ambnight <- dflist[[i]][2, c(6, 5)]  # columns of interest
+  colnames(ambnight) <- c("$L_{A50}$ Night", "$L_{Anat}$ Night")  # Rename columns
+  
+  # Combine full frequency day and night data
+  dflist[[i]] <- cbind("SiteID" = names[i], ambday, ambnight)
+}
+
+# Combine all data frames into one
+amb_full <- rbindlist(dflist)
+amb_full$SiteID <- as.factor(amb_full$SiteID)
+amb_full <- amb_full[, c(1, 2, 4, 3, 5)]  # Reorder columns
+
+### For all metric table at several percentiles
+# Reset the dflist for the next aggregation
+dflist <- mget(ls(pattern = "Amb.*a"))
+
+for (i in seq_along(dflist)) {
+  # Select daytime metrics
+  ambdayall <- dflist[[i]][1, c(7, 6, 5, 4)]  # columns of interest
+  colnames(ambdayall) <- c("$L_{A10}$", "$L_{A50}$", "$L_{Anat}$", "$L_{A90}$")
+  ambdayall$Time <- "Day"
+  ambdayall$SiteID <- names[i]
+  
+  # Select nighttime metrics
+  ambnightall <- dflist[[i]][2, c(7, 6, 5, 4)]  # columns of interest
+  colnames(ambnightall) <- c("$L_{A10}$", "$L_{A50}$", "$L_{Anat}$", "$L_{A90}$")
+  ambnightall$Time <- "Night"
+  ambnightall$SiteID <- names[i]
+  
+  # Combine day and night data
+  dflist[[i]] <- rbind(ambdayall, ambnightall)
+}
+
+# Combine all data frames into one for all metrics
+amb_full_all <- rbindlist(dflist)
+amb_full_all$SiteID <- as.factor(amb_full_all$SiteID)
+amb_full_all <- amb_full_all[, c("Time", "SiteID", "$L_{A10}$", "$L_{A50}$", "$L_{Anat}$", "$L_{A90}$")]  # Reorder columns
+
+```
+
+
+
+```{r listeningarea,message=FALSE,echo=FALSE,include = FALSE, eval=eitherfiles, warning=FALSE}
+# Calculate impacts and listening area reductions
+impact_la <- amb_full[, c(1, 2, 4, 3, 5)]
+
+# Daytime impact calculations
+impact_la$DayImpact <- impact_la[, 2] - impact_la[, 3]
+impact_la$DayLAR <- (1 - 10^(-impact_la$DayImpact / 10)) * 100
+
+# Nighttime impact calculations
+impact_la$NightImpact <- impact_la[, 4] - impact_la[, 5]
+impact_la$NightLAR <- (1 - 10^(-impact_la$NightImpact / 10)) * 100
+
+# Overall impacts and listening area reductions
+impact_la$AllImpact <- (impact_la$DayImpact + impact_la$NightImpact) / 2
+impact_la$AllLAR <- (impact_la$DayLAR + impact_la$NightLAR) / 2
+
+# Select relevant columns for the final output
+impact_la <- impact_la[, c(1, 6:11)]
+
+```
+
+
+
+
+
+```{r time-above, echo=FALSE, message=FALSE, include=TRUE, warning=FALSE}
+
+# Loop through and create data sets using the site names and the readMetrics function extracting the full frequency time above metrics
+for (i in seq_along(names)) {
+  df_name <- paste("1data_", names[[i]], sep = "")
+  assign(df_name, data.frame(readMetrics(metricsFiles[i], "timeAbove", params$season)))
+}
+
+# List out created data sets with the time above for full frequency
+dflist <- mget(ls(pattern = "1.*a"))
+
+for (i in seq_along(dflist)) {
+  fullday <- dflist[[i]][1, 2:5]  # Select columns of interest
+  colnames(fullday) <- c("35 dB Day", "45 dB Day", "52 dB Day", "60 dB Day")
+  
+  fullnight <- dflist[[i]][2, 2:5]  # Select nighttime data
+  colnames(fullnight) <- c("35 dB Night", "45 dB Night", "52 dB Night", "60 dB Night")
+  
+  # Combine full frequency day and night data
+  dflist[[i]] <- cbind("Site ID" = names[i], "Frequency (Hz)" = "Full (12.5-20,000)", fullday, fullnight)
+}
+
+# Create data frame of all full frequency time above data
+timeAbove_full <- rbindlist(dflist)
+
+# Loop through and create data sets using the site names and the readMetrics function for the ANS weighted frequency time above data
+for (i in seq_along(names)) {
+  df_name <- paste("2data_", names[[i]], sep = "")
+  assign(df_name, data.frame(readMetrics(metricsFiles[i], "timeAboveT", params$season)))
+}
+
+dflist <- mget(ls(pattern = "2.*a"))
+
+for (i in seq_along(dflist)) {
+  ansday <- dflist[[i]][1, 2:5]  # Select columns of interest
+  colnames(ansday) <- c("35 dB Day", "45 dB Day", "52 dB Day", "60 dB Day")
+  
+  ansnight <- dflist[[i]][2, 2:5]  # Select nighttime data
+  colnames(ansnight) <- c("35 dB Night", "45 dB Night", "52 dB Night", "60 dB Night")
+  
+  # Combine ANS frequency day and night data
+  dflist[[i]] <- cbind("Site ID" = names[i], "Frequency (Hz)" = r"(ANS (20-1,250) $^B$)", ansday, ansnight)
+}
+
+# Create data frame of all ANS weighted frequency time above data
+timeAbove_ans <- rbindlist(dflist)
+
+# Combine rows of full and ANS weighted data frames
+timeAbove <- rbind(timeAbove_full, timeAbove_ans)
+
+# Order columns by Site ID
+timeAbove <- timeAbove[order(timeAbove$`Site ID`, decreasing = FALSE), ]
+
+```
+
+
+
+
+```{r listening-labdetail, eval=lcenterfiles, echo=FALSE, message=FALSE, warning=FALSE}
+# knitr::opts_chunk$set()
+
+# Extract a list of new site names based on the imported metrics files from Listening Lab
+# This may differ based on how the LL analyzed the data (SPLAT vs Listening)
+newnames <- str_extract(basename(metricsFiles_lc), "(?<=_)[^_]+(?=\\.txt$)")
+X <- list(names, newnames)
+
+# Get the common site names
+newnames <- list.common(X)
+
+# Create incoming data frames by site, read metrics for Listening Lab detailed data, and add site ID variable
+for (i in seq_along(newnames)) {
+  df_name <- paste("LLDdata_", newnames[[i]], sep = "")
+  assign(df_name, cbind(data.frame(readMetrics(metricsFiles[i], "LLDetail", params$season)), "Site ID" = newnames[i]))
+}
+
+# Create a list of dataframes
+lldlist <- mget(ls(pattern = "LLD.*a"))
+
+# Create a combined data set
+lldetail <- ldply(lldlist, data.frame)
+
+# Rename column names for clarity
+colnames(lldetail) <- c("df", "junk", "SrcID", "00h", "01h", "02h", "03h", "04h", "05h", 
+                         "06hr", "07hr", "08h", "09h", "10h", "11h", "12h", "13h", 
+                         "14h", "15h", "16h", "17h", "18h", "19h", "20h", "21h", 
+                         "22h", "23h", "SiteID")
+
+# Change source ID to numeric
+lldetail$SrcID <- as.numeric(lldetail$SrcID)
+
+# Join LL sourceID data with the detailed Listening Lab data
+combineddata <- left_join(lldetail, sourceid, by = "SrcID")
+
+# Reduce the joined dataset to the columns of interest (Description and hours)
+detailfinal <- combineddata[, c(28, 31, 4:27)]
+
+```
+
+
+
+```{r listening-labcat, echo=FALSE, message=FALSE, eval=lcenterfiles, warning=FALSE}
+# knitr::opts_chunk$set()
+
+# Extract a list of new site names based on the imported metrics files from Listening Lab
+# This may differ based on how the LL analyzed the data (SPLAT vs Listening)
+newnames <- unique(newnames)
+
+# Create incoming data frames by site, read metrics for Listening Lab categorical data, and add site ID variable
+for (i in seq_along(newnames)) {
+  df_name <- paste("LLCdata_", newnames[[i]], sep = "")
+  assign(df_name, cbind(data.frame(readMetrics(metricsFiles_lc[i], "LLCat", params$season)), "Site ID" = newnames[i]))
+}
+
+# Create a list of dataframes
+llclist <- mget(ls(pattern = "LLC.*a"))
+
+# Combine the data frames into one dataset
+llcat <- ldply(llclist, data.frame)
+
+# Rename column names for clarity
+colnames(llcat) <- c("df", "junk", "SrcID", "00h", "01h", "02h", "03h", "04h", 
+                      "05h", "06hr", "07hr", "08h", "09h", "10h", "11h", 
+                      "12h", "13h", "14h", "15h", "16h", "17h", "18h", 
+                      "19h", "20h", "21h", "22h", "23h", "SiteID")
+
+# Change source ID to numeric
+llcat$SrcID <- as.numeric(llcat$SrcID)
+
+# Join LL source ID data with the categorical Listening Lab data
+combineddatacat <- left_join(llcat, sourceid, by = "SrcID")
+
+# Reduce the joined dataset to the columns of interest (Description and hours)
+catfinal <- combineddatacat[, c(3, 28, 30, 4:27)]
+
+
+
+```
+
+
+
+
+
+```{r SPLAT, message=FALSE, eval=splatfiles, include=FALSE, warning=FALSE}
+# knitr::opts_chunk$set()
+
+# Extract a list of new site names based on the imported metrics files from SPLAT. 
+# This may differ based on how the LL analyzed the data (SPLAT vs Listening).
+newnames2 <- unique(str_extract(basename(metricsFiles_splat), "(?<=_)[^_]+(?=\\.txt$)"))
+
+# Create incoming data frames by site, read metrics for SPLAT detailed data, and add site ID variable
+for (i in seq_along(newnames2)) {
+  df_name2 <- paste("SPLATDdata_", newnames2[[i]], sep = "")
+  assign(df_name2, cbind(data.frame(readMetrics(metricsFiles_splat[i], "SPLATDet", params$season)), "Site ID" = newnames2[i]))
+}
+
+# Create a list of dataframes
+splatdlist <- mget(ls(pattern = "SPLATD.*a"))
+
+# Combine the data frames into one dataset
+splatdetail <- ldply(splatdlist, data.frame)
+
+# Rename column names for clarity
+colnames(splatdetail) <- c("df", "junk", "SrcID", "00h", "01h", "02h", "03h", "04h", 
+                            "05h", "06hr", "07hr", "08h", "09h", "10h", "11h", 
+                            "12h", "13h", "14h", "15h", "16h", "17h", "18h", 
+                            "19h", "20h", "21h", "22h", "23h", "SiteID")
+
+# Change source ID to numeric
+splatdetail$SrcID <- as.numeric(splatdetail$SrcID)
+
+# Join SPLAT source ID data with the detailed SPLAT data
+combineddata2 <- left_join(splatdetail, sourceid, by = "SrcID")
+
+# Reduce the joined dataset to columns of interest (Description and hours)
+splatdetailfinal <- combineddata2[, c(28, 31, 4:27)]
+
+# Summarize by category by creating a dataset summarized by source type
+splatcatfinal <- combineddata2[, c(29, 28, 30, 4:27)]
+splatcatfinal <- splatcatfinal %>%
+  rename("SrcID" = "Type") %>%
+  group_by(SrcID, SiteID, `Source Type`) %>%
+  summarise(across(c(1:24), sum)) %>%
+  ungroup()
+```
+
+
+```{r pAud, echo=FALSE, eval=eitherfiles, warning=FALSE, message=FALSE}
+# knitr::opts_chunk$set()
+
+# Loop through site names and read pAud metrics, adding site ID variable
+for (i in seq_along(names)) {
+  df_name2 <- paste("pAuddata_", names[[i]], sep = "")
+  assign(df_name2, cbind(data.frame(readMetrics(metricsFiles[i], "pAud", params$season)), "Site ID" = names[i]))
+}
+
+# Create a list of dataframes
+pAudlist <- mget(ls(pattern = "pAud.*a"))
+
+# Combine the individual dataframes into one
+pAuddetail <- ldply(pAudlist, data.frame)
+
+# Create dataframe for source category to get percent audible of NOISE
+pAud <- pAuddetail %>%
+  dplyr::group_by(Site.ID) %>%
+  dplyr::summarize(mean = mean(as.numeric(data.Total), na.rm = TRUE)) %>%
+  dplyr::rename(SiteID = Site.ID, Noise = mean)
+
+# Create data frame to bind to detailfinal dataset for ggplot bar graphs
+pAudtranspose <- pAuddetail %>%
+  rename(SiteID = Site.ID, hr = data.V1, totalnoise = data.Total) %>%
+  select(SiteID, hr, totalnoise) %>%
+  pivot_wider(names_from = hr, values_from = totalnoise) %>%
+  mutate(`Source Type` = "Total Noise") %>%
+  relocate(`Source Type`, .after = SiteID) %>%
+  mutate(across(3:26, as.numeric))  # using across() for better readability
+
+```
+
+```{r, echo=FALSE, eval=eitherfiles, warning=FALSE, message=FALSE}
+# knitr::opts_chunk$set()
+
+# If SPLAT data exists, it will combine with Listening Center data; otherwise, it uses just Listening Center data
+catcombined <- rbind(catfinal, if (exists("splatcatfinal")) splatcatfinal)
+
+# Average the 24-hour data into one column
+catcombined$dailyave <- rowMeans(catcombined[, 4:27], na.rm = TRUE)  # Added na.rm to handle potential NAs
+
+# Convert Site ID to factor
+catcombined$SiteID <- as.factor(catcombined$SiteID)
+
+# Create variable for identifying noise vs natural
+catcombined$SourceCategory <- ifelse(catcombined$SrcID > 0 & catcombined$SrcID <= 20, "Noise", 
+                                      ifelse(catcombined$SrcID > 20 & catcombined$SrcID <= 40, "Natural", "Other"))
+
+# Take categorical data and obtain 24-hour averages for source categories and source types
+# Data frame is for percentages of different broad source types used in executive table summary
+data_pa_all <- catcombined %>%
+  group_by(SiteID, SourceCategory, `Source Type`) %>%
+  summarize(mean = mean(dailyave, na.rm = TRUE), .groups = "drop")  # Added .groups = "drop" to avoid grouping in the output
+
+
+# Get top 3 noise sources
+sourcetype1 <- data_pa_all %>%
+  filter(SourceCategory == "Noise") %>%
+  group_by(`Source Type`) %>%
+  summarize(sum = sum(mean), .groups = "drop") %>%
+  top_n(3, sum) %>%
+  arrange(desc(sum))
+
+nlist <- as.list(sourcetype1$`Source Type`)
+
+# Create data frame for top 3 source types
+sourcetype2 <- data_pa_all %>%
+  filter(SourceCategory == "Noise", `Source Type` %in% nlist) %>%
+  pivot_wider(names_from = `Source Type`, values_from = mean)  # Using pivot_wider instead of spread for modern syntax
+
+# Remove unnecessary column (if it exists)
+sourcetype2 <- sourcetype2[, -2, drop = FALSE]  # Ensures that it remains a data frame
+```
+
+
+```{r pAudSPLAT, eval=splatfiles, include=FALSE, warning=FALSE, message=FALSE}
+# knitr::opts_chunk$set()
+
+# Get total noise for sites with SPLAT analysis
+pAud_splat <- data %>%
+  filter(SourceCategory == "Noise", SiteID %in% newnames2) %>%
+  summarize(Noise = sum(as.numeric(mean), na.rm = TRUE) ) %>%  # Added na.rm to handle potential missing values
+  select(SiteID, Noise)  # Ensure SiteID is included in the final output
+
+```
+
+```{r mergePAud, echo=FALSE, eval=eitherfiles, warning=FALSE, message=FALSE}
+# knitr::opts_chunk$set()
+
+# Merge pAud with SPLAT data if it exists
+pAud <- rbind(pAud, if (exists("pAud_splat")) pAud_splat)
+
+# Merge pAud with the top three sources
+natpercent2 <- merge(pAud, sourcetype2, by = "SiteID", all = TRUE)
+
+
+```
+
+### **Summary of noise and existing  and natural conditions**
+*This table is incorporated into the the standard format of acoustic monitoring reports, executive summary table. It can be copy and pasted into the existing format of the report template.* 
+
+
+
+```{r ex_sum_tab, echo=FALSE, eval=eitherfiles, include=TRUE, warning=FALSE, message=FALSE}
+# knitr::opts_chunk$set()
+
+# Merge the data for the summary table
+exectab <- merge(natpercent2, amb_full, by = "SiteID", all = TRUE)
+
+# Create a summary table using kable
+execsumtab <- kbl(exectab, 
+                   digits = 1, 
+                   format.args = list(nsmall = 1),
+                   caption = paste("Table XX. Summary of summer noise sources and sound levels at", sitecount, parkname, "sites. Included for each site are a) mean percent time audible for all human-caused noise, including the top two known noise sources, and b.) existing ($L_{A50}$) and natural ($L_{Anat}$) ambient sound levels (dB re 20 µPa, A-weighted broadband, 12.5 Hz—20 kHz) during the day (0700-1900) and night (1900-0700). The difference between the natural and existing ambient sound levels indicates the deviation from the natural condition." )) %>%
+  kable_paper(bootstrap_options = "striped", full_width = TRUE) %>%
+  kable_classic() %>%
+  add_header_above(c(" " = 1, 
+                     "a) Mean time audible for noise \n (% of 24-hour time period)" = 4, 
+                     "b) Median Existing \n Ambient ($L_{A50}$) in dB" = 2, 
+                     "Median Natural \n Ambient ($L_{Anat}$) in dB" = 2))
+
+# Render the summary table
+execsumtab
+
+# Write the summary table to a CSV file
+write.csv(exectab, 
+          file = paste0(report_dir, "/", params$season, "_", params$year, "/executivesumtab_", params$season, ".csv"), 
+          row.names = FALSE)  # Added row.names = FALSE for cleaner output
+```
+
+### **Summary of existing  and natural conditions across several percentiles**
+*This table is incorporated into the the standard format of acoustic monitoring reports, executive summary table. It can be copy and pasted into the existing format of the report template.* 
+
+```{r amb_full_sum, echo=FALSE, include=TRUE, warning=FALSE, message=FALSE}
+
+### Table for ambient summaries across percentiles
+ambfullsum <- kbl(amb_full_all, 
+                   digits = 1, 
+                   format.args = list(nsmall = 1),
+                   caption = paste("Table XX. Summary of summer noise sources and sound levels at", sitecount, parkname, 
+                                   "sites in the", params$season, "season. Included for each site are maximum ($L_{Amax}$),",
+                                   "10th percentile ($L_{A10}$), existing ($L_{A50}$), natural ($L_{Anat}$),",
+                                   "90th percentile ($L_{A90}$), and minimum ($L_{Amin}$) ambient sound levels (dB re 20 µPa, A-weighted broadband, 12.5 Hz—20 kHz)",
+                                   "during the day (0700-1900) and night (1900-0700). The difference between the natural and existing ambient sound levels indicates the deviation from the natural condition.")) %>%
+  kable_paper(bootstrap_options = "striped", full_width = TRUE) %>%
+  kable_classic()
+
+# Render the ambient summary table
+ambfullsum
+
+# Write the ambient summary to a CSV file
+write.csv(amb_full_all, 
+          file = paste0(report_dir, "/", params$season, "_", params$year, "/ambfullsum_", params$season, ".csv"),
+          row.names = FALSE)  # Added row.names = FALSE for cleaner output
+
+```
+
+
+
+
+### **Time Above Table**
+*This table is incorporated into the the standard format of acoustic monitoring reports. It can be copy and pasted into the existing format of the report template.* 
+
+```{r time-above-table, echo=FALSE, include=TRUE, warning=FALSE, message=FALSE}
+
+# Rename columns in the timeAbove dataframe
+colnames(timeAbove) <- c("Site ID", "Frequency (Hz)", "35 dB Day", "45 dB Day", "52 dB Day", "60 dB Day", 
+                          "35 dB Night", "45 dB Night", "52 dB Night", "60 dB Night")
+
+# Create the time-above table using kable
+timeabtab <- kbl(timeAbove, 
+                 col.names = c("Site ID", "Frequency (Hz)", r"(35 dB $^A$)", r"(45 dB $^A$)", 
+                               r"(52 dB $^A$)", r"(60 dB $^A$)", r"(35 dB $^A$)", r"(45 dB $^A$)", 
+                               r"(52 dB $^A$)", r"(60 dB $^A$)"), 
+                 digits = 2, 
+                 format.args = list(nsmall = 2), 
+                 caption = paste("Table XX. Percent time above metrics for", sitecount, 
+                                 parkname, "sites in the", params$season, "season.")) %>% 
+  kable_paper(bootstrap_options = "striped", full_width = TRUE) %>%
+  kable_classic() %>%
+  add_header_above(c(" " = 2, 
+                     "Time above sound level  \n (% of daytime hours, 07:00 to 19:00)" = 4, 
+                     "Time above sound level \n (% of nighttime hours, 19:00 to 07:00)" = 4))
+
+# Render the time-above table
+timeabtab
+
+# Write the time-above data to a CSV file
+write.csv(timeAbove, 
+          file = paste0(report_dir, "/", params$season, "_", params$year, "/timeabove_", params$season, ".csv"), 
+          row.names = FALSE)  # Added row.names = FALSE for cleaner output
+
+
+```
+### **Impact and Listening Area Reduction**
+*This table provides a summary of the dBA impact by site and the reduction in listening area. It can be used for the Discussion section in the report* 
+
+
+
+```{r imp_la, echo=FALSE, include=TRUE, eval=eitherfiles, warning=FALSE, message=FALSE}
+# knitr::opts_chunk$set()
+
+# Rename columns for clarity in the impact data frame
+colnames(impact_la) <- c("Site ID", "Impact (dBA)", "Listening Area \n Reduction (%)", 
+                          "Impact (dBA)", "Listening Area \n Reduction (%)", 
+                          "Impact (dBA)", "Listening Area \n Reduction (%)")
+
+# Create the impact and listening area reduction table using kable
+impactla <- kbl(impact_la, 
+                 align = "lcccccc", 
+                 digits = 1, 
+                 format.args = list(nsmall = 1), 
+                 caption = paste("Table XX. Summary of the impact (($L_{A50}$)-($L_{Anat}$)) and reduction in listening area at", 
+                                 sitecount, parkname, "sites in the", params$season, "season. Included for each site is the impact and reduction in listening area (%) during a) day (0700-1900); b) night (1900-0700), and c) combined (24-hr).")) %>%
+  kable_paper(bootstrap_options = "striped", full_width = TRUE) %>%
+  kable_classic() %>%
+  add_header_above(c(" " = 1, "a) Day" = 2, "b) Night" = 2, "c) Combined" = 2))
+
+# Render the impact summary table
+impactla
+
+# Write the impact and listening area data to a CSV file
+write.csv(impact_la, 
+          file = paste0(report_dir, "/", params$season, "_", params$year, "/impactlisteningarea_", params$season, ".csv"), 
+          row.names = FALSE)  # Added row.names = FALSE for cleaner output
+```
+
+
+
+
+### **Listening Lab Tables Source ID using Listening Center AMT toolbox technique**
+*These tables are incorporated into the the standard format of acoustic monitoring reports. Each site includes the hourly sound source identification and the hourly percent time audible. After generating the metrics files with the listening lab data incorporated, run this Rmarkdown. Explore each table and identify NAs or source descriptions that do not make sense. Use this to guide potentially misidentified descriptions and return to the raw acoustic data to confirm or re-identify. If it is a mis-identification, reclassify the description with the correct identification in the original listening lab .txt file. Then re-run the metrics files process in AMT. Then re-run the RMarkdown document for a new table. It can then be copy and pasted into the existing format of the report template.* 
+
+
+
+```{r ll-detail-table, echo=FALSE, results = "asis", eval=lcenterfiles, warning=FALSE, message=FALSE}
+# knitr::opts_chunk$set()
+
+daylist <- list()
+seasonlist <- list()
+
+# Loop through each metrics file
+for(i in seq_along(metricsFiles_lc)){
+  mydata <- read_delim(
+    file = metricsFiles_lc[i], 
+    skip = 12,
+    delim = "\t"
+  ) 
+  
+  # Filter by detailed event audibility
+  lcdetail <- mydata[mydata$`...1` %like% "Listening Center Detailed Event Audibility", ] 
+  
+  # Filter by season
+  lcdetailseason <- lcdetail[lcdetail$`...1` %like% season, ]
+  
+  # Extract season and number of days analyzed
+  season_days <- lcdetailseason$...1[[1]]
+  days <- sub("\\D*(\\d+).*", "\\1", season_days)
+  
+  daylist <- append(daylist, days)
+  seasonlist <- append(seasonlist, season)
+}
+
+# Generate tables for each site
+for (i in seq_along(newnames)){
+  my_table <- knitr::kable(subset(detailfinal, SiteID == newnames[i]), 
+                            row.names = FALSE, 
+                            caption = paste("Table XX. Mean hourly time audible (%) for each noise source at ", 
+                                            newnames[i], 
+                                            " in ", seasonlist[i], 
+                                            ", n =", daylist[i], " days.", sep = ""), 
+                            format.args = list(nsmall = 1), 
+                            digits = 1) %>%
+    kable_paper(bootstrap_options = "striped", full_width = TRUE) 
+  
+  my_table <- remove_column(my_table, 1)  # Remove the first column
+  print(my_table)
+}
+
+# Write detailed results to CSV files
+for (i in seq_along(newnames)){
+  data <- subset(detailfinal, SiteID == newnames[i])
+  write.csv(data, 
+            file = paste0(report_dir, "/", params$season, "_", params$year, "/ListeningCenter_", 
+                           params$season, "_DetailedResults_", newnames[i], ".csv"),
+            row.names = FALSE)  # Added row.names = FALSE for cleaner output
+}
+```
+
+### **Listening Lab Tables Source ID using SPLAT** 
+*These tables are incorporated into the the standard format of acoustic monitoring reports. Each site includes the hourly sound source identification and the hourly percent time audible. After generating the metrics files with the listening lab data incorporated, run this Rmarkdown. Explore each table and identify NAs or source descriptions that do not make sense. Use this to guide potentially misidentified descriptions and return to the raw acoustic data to confirm or re-identify. If it is a mis-identification, reclassify the description with the correct identification in the original listening lab .txt file. Then re-run the metrics files process in AMT. Then re-run the RMarkdown document for a new table. It can then be copy and pasted into the existing format of the report template.* 
+
+
+```{r splat-detail-table, echo=FALSE, results = "asis", eval=splatfiles, warning=FALSE, message=FALSE}
+# knitr::opts_chunk$set()
+
+# Generate tables for each site using SPLAT data
+for (i in seq_along(newnames2)) {
+  # Note: Manually added season and day list to CABR006 - consider automating this!
+  
+  my_table <- knitr::kable(
+    subset(splatdetailfinal, SiteID == newnames2[i]),
+    row.names = FALSE,
+    digits = 1,
+    caption = paste("Table XX. Mean hourly time audible (%) for each noise source at", 
+                    newnames2[i], 
+                    "in", seasonlist[6], 
+                    ", n =", daylist[6], "days. Source ID obtained using SPLAT technique.", sep = " ")
+  ) %>%
+  kable_paper(bootstrap_options = "striped", full_width = TRUE)
+  
+  my_table <- remove_column(my_table, 1)  # Remove the first column
+  print(my_table)
+}
+
+# Write detailed results to CSV files for report publication
+for (i in seq_along(newnames2)) {
+  data <- subset(splatdetailfinal, SiteID == newnames2[i])
+  write.csv(data, 
+            file = paste0(report_dir, "/", season, "_", params$year, "/SPLAT_", 
+                           params$season, "DetailedResults_", newnames2[i], ".csv"),
+            row.names = FALSE)  # Added row.names = FALSE for cleaner output
+}
+```
+
+
+
+
+
+```{r TwoNoiseSourcesDATA, echo=FALSE, eval=eitherfiles, warning=FALSE, message=FALSE}
+# knitr::opts_chunk$set()
+
+# Create a copy of the combined categorical data
+catfinal1 <- catcombined
+
+# Select relevant columns and rename them for easier interpretation
+catfinal1 <- catfinal1[, c(1:3, 28)]
+colnames(catfinal1) <- c("SrcID", "SiteID", "SourceType", "Percent")
+
+# Prepare data for the two noise source graphs
+
+# Grab data for the top noise source
+firstnoise <- catfinal1 %>%
+  filter(SrcID <= 20) %>%
+  group_by(SiteID) %>%
+  top_n(1, Percent) %>%
+  mutate(rank = 1)
+
+# Grab data for the second highest source by filtering the top two and then taking the second
+secondnoise <- catfinal1 %>%
+  filter(SrcID <= 20) %>%
+  group_by(SiteID) %>%
+  top_n(2, Percent) %>%
+  top_n(-1, Percent) %>%
+  mutate(rank = 2)
+
+# Combine the top two noise sources into one dataset
+toptwonoise <- rbind(firstnoise, secondnoise)
+
+# Extract and modify the metrics file path for future use
+mwd <- metricsFiles[1]
+mwd <- str_sub(mwd, 1, -20)
+```
+
+
+
+```{r noisesource, echo=FALSE, fig.cap="", eval=eitherfiles, fig.width=8, fig.height=5, warning=FALSE, message=FALSE}
+# knitr::opts_chunk$set()
+
+# Create a dataset from listening lab data to be used for graphs
+srctypefinalplot = catcombined[, c(2:27)]
+
+# Ensure that the names of the dataframes match for binding
+names(pAudtranspose) <- names(srctypefinalplot) 
+toptwosource <- rbind(pAudtranspose, srctypefinalplot)
+
+# Create dataframe with total noise and categorical noise
+toptwosource1 <- toptwosource %>%
+  pivot_longer(cols = c(3:26), 
+               names_to = 'hour', 
+               values_to = 'paud') 
+
+# Remove 'h' and 'hr' from hour variable
+toptwosource1$hr <- substr(toptwosource1$hour, start = 1, stop = 2)
+
+# Create lists for the top 1 and top 2 noise sources
+mansrc1list <- as.list(firstnoise$SourceType)
+mansrc2list <- as.list(secondnoise$SourceType)
+
+# Output directory for the plots
+outDir <- paste(report_dir, "/", params$season, "_", params$year, sep = "")
+
+# Loop through each site to create time audibility graphs for the top one source
+#loop through each site and make time audibility graphs for top one source
+#loop through each site and make time audibility graphs for top one source
+for (i in 1:length(names)){
+  df1 <- toptwosource1 %>% 
+  filter(SiteID %in% names[i] )%>% 
+    filter(`Source Type` %in% c("Total Noise"))
+  df2 <- toptwosource1 %>% 
+  filter(SiteID %in% names[i] )%>% 
+    filter(`Source Type` %in% mansrc1list[i])
+    plot<-ggplot()+
+  geom_col(data=df1, aes(x=hr, y=paud,fill = `Source Type`, color="Total human audibility"),fill='grey55', width=.9, size=0)+
+  geom_col(data=df2, aes(x=hr, y=paud,fill = `Source Type`), width=.85,alpha=0.75,size=0) +
+  ggtitle(ifelse(params$plottitle=="Yes",paste("Top Noise Source at: ", names[i], sep=''),""))+
+  scale_fill_manual(values = c("slateblue"))+
+  scale_x_discrete("Hour")+
+  scale_y_continuous("Time Audible (%)",expand = c(0,0),limits = c(0,110), breaks= seq(0, 100, by = 10))+
+  scale_color_manual(values=c('lightgrey','slateblue'))+ 
+    theme(legend.position="top")+ 
+     theme(legend.title=element_blank()) + 
+    theme(panel.background = element_rect(fill = "grey80",
+                               colour = "grey80",
+                                size = 0.5, linetype = "solid"), panel.grid.minor = element_blank())
+    
+
+  #print(plot)
+ggsave(paste(names[i],"_",params$season,"_",mansrc1list[i],"_",mansrc2list[i],"PercentAud_top1",".png", sep = ""), plot = last_plot(), height = 5 , width =8,path=outDir)
+} 
+
+# Loop through each site to create time audibility graphs for the top two sources
+for (i in 1:length(names)){
+  df1 <- toptwosource1 %>% 
+  filter(SiteID %in% names[i] )%>% 
+    filter(`Source Type` %in% c("Total Noise"))
+  df2 <- toptwosource1 %>% 
+  filter(SiteID %in% names[i] )%>% 
+    filter(`Source Type` %in% c(mansrc1list[i], mansrc2list[i]))
+    plot<-ggplot()+
+  geom_col(data=df1, aes(x=hr, y=paud,fill = `Source Type`, color="Total human audibility"),fill='grey55', width=.9, size=0)+
+  geom_col(data=df2, aes(x=hr, y=paud,fill = `Source Type`), position="dodge2", width=.85, alpha=.80, size=0) +
+  scale_fill_manual(values = c("slateblue", "lightcoral"))+
+  scale_x_discrete("Hour")+
+  scale_y_continuous("Time Audible (%)",expand = c(0,0),limits = c(0,110), breaks= seq(0, 100, by = 10))+
+  scale_color_manual(values=c('lightgrey','slateblue','lightcoral'))+
+  ggtitle(ifelse(params$plottitle=="Yes",paste("Top Two Noise Sources at: ", names[i], sep=''),""))+ 
+    theme(legend.position="top")+ 
+     theme(legend.title=element_blank()) + 
+    theme(panel.background = element_rect(fill = "grey80",
+                               colour = "grey80",
+                                linewidth = 0.5, linetype = "solid"), panel.grid.minor = element_blank())
+
+  #print(plot)
+ggsave(paste(names[i],"_",params$season,"_",mansrc1list[i],"_",mansrc2list[i],"PercentAud_top2",".png", sep = ""), plot = last_plot(), height = 5 , width =8,path=outDir)
+} 
+
+```
+
+
+``` {r all source graph, echo=FALSE, eval=eitherfiles, fig.width=8, fig.height=5, warning=FALSE,message=FALSE}
+
+
+
+# Define a color palette (ensure it has enough colors)
+cols <- RColorBrewer::brewer.pal(n = 2, name = "Set2")  # Adjust 'n' as needed for your unique categories
+
+# Loop through each site to create time audibility graphs for the top two sources
+for (i in 1:length(names)) {
+  # Filter the data for the current SiteID, excluding "Other" SourceCategory
+  df1 <- data_pa_all %>% 
+    filter(SiteID == names[i]) %>% 
+    filter(SourceCategory != "Other")  # Using == for clarity since it's a single value comparison
+
+  # Check how many unique SourceCategories are in df1
+  unique_categories <- unique(df1$SourceCategory)
+  num_categories <- length(unique_categories)
+  
+  # Print to console to observe the number of unique categories (optional)
+  #print(paste("Site:", names[i], "- Unique Source Categories:", num_categories))
+  
+  # Calculate means and reorder Source Type based on mean value
+  df1_means <- df1 %>%
+    group_by(`Source Type`) %>%
+    summarise(mean_value = mean(mean, na.rm = TRUE)) %>%  # Calculate mean for means
+    arrange(mean_value)  # Arrange in ascending order
+
+  # Reorder Source Type based on calculated means
+  df1$`Source Type` <- factor(df1$`Source Type`, levels = df1_means$`Source Type`)
+
+  # Flip the order of SourceCategory for faceting by reversing the levels
+  df1$SourceCategory <- factor(df1$SourceCategory, levels = rev(unique(df1$SourceCategory)))
+
+  # Create the plot
+  plot <- ggplot(data = df1, aes(x = mean, y = `Source Type`, fill = SourceCategory)) +
+    geom_col(width = 0.9) +
+    scale_x_continuous(name = "Time Audible (%)") +
+    scale_y_discrete(name = "Sound Source Type") +
+    facet_wrap(~ SourceCategory, scales = "free") +  # Facet by SourceCategory
+    theme_classic(base_size = 10) + 
+    scale_fill_manual(values = cols[1:num_categories]) +  # Ensure we provide enough colors
+    guides(fill = guide_legend(title = "Source Type"))+
+    ggtitle(ifelse(params$plottitle=="Yes",paste("All Sound Sources at: ", names[i], sep=''),"")) +
+    theme(
+      text = element_text(size = 10),
+      axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1),
+      plot.caption = element_text(hjust = 0),  # Center caption if ever used
+      legend.key.size = unit(0.5, 'cm'), 
+      legend.position = "bottom", 
+      legend.title = element_text(size = 12)
+    )
+
+  
+  # Print the plot for the current site
+  #print(plot)
+
+
+  # Save the plot with a dynamic filename based on SiteID and other parameters
+  ggsave(paste(names[i], "_", params$season, "_", mansrc1list[i], "_", mansrc2list[i], "PercentAud_all.png", sep = ""), 
+         plot = plot, height = 5, width = 8, path = outDir)
+}
+
+
+```
+
+```{r noisesource_import, echo=FALSE, results='asis', fig.cap=paste("Your caption."), eval=eitherfiles, warning=FALSE, message=FALSE}
+# knitr::opts_chunk$set()
+
+# List all PNG files in the specified directory
+files <- list.files(path = mwd, pattern = "png", full.names = TRUE)
+
+# Loop through each file and print Markdown to display the image
+for (f in files) {
+  cat(paste0("![image_label](", f, ")\n"))
+}
+
+```
+
+
+``` {r report_hourplot_freqplot_contour, fig.cap="",include=TRUE, echo=FALSE, warning=FALSE, message=FALSE}
+#########################################################################
+#
+#	INPUT:	METRICS_xxxx.txt file produced by the HourlyMetrics program
+#
+#	OUTPUT:	Several standardized plots used by the National Park Service
+#			
+#			Hourplot:	Median hourly wideband dBA values
+#
+#			Freqplot	L10, L50, [Lnat], and L90 1/3 octave band plots 
+#			Contour:	Plot with Hour on the X-axis, Frequency on the Y
+#						axis.
+#
+#	USAGE:	Change any parameters down in the next section, run the
+#			script in R. Plots will be produced in the directory chosen
+#			by user in dialog box
+#
+#	ABOUT:	Written by Damon Joyce (damon_joyce@nps.gov)
+#			2010.11.23
+#
+#########################################################################
+
+
+#Produce titles on plots? [T/F]
+
+titleparam<-ifelse(params$plottitle=="Yes",1,0)
+
+titlesOnPlots 	<-	as.numeric(titleparam)
+
+#Which plots to produce? [T/F]
+plotHRDBA 	<- 	params$plotHRDBA
+plotTRUNCDBA 	<-	params$plotTRUNCDBA
+plotFREQDB 	<-	params$plotFREQDB
+plotCONTOUR 	<-	params$plotCONTOUR 
+plotPA 		<- 	F
+
+#How many days were analyzed for Lnat?
+#numAnalyzedDays <- "1"
+
+#What's the upper limit for the hourly and frequency graphs? (must be a multiple of 3)
+yMaxHr <- as.numeric(params$yMaxHr)
+yMaxHz <- as.numeric(params$yMaxHz)
+
+#What's the lower limit for the hourly and frequency graphs? (must be a multiple of 3)
+yMinHr <- as.numeric(params$yMinHr)
+yMinHz <- as.numeric(params$yMinHz)
+
+#End User settings#######################################################
+
+plotHRDBACOMB <- c(plotHRDBA, plotTRUNCDBA)
+
+outDir <- paste(report_dir,"/",params$season,"_",params$year,sep="")
+
+filesToPlot <- metricsFiles
+
+low20NF <- c(9.3,8.5,7.5,6.5,5.6,4.75,3.9,3.2,2.5,1.75,0.75,0.25,-0.25,-0.5,-0.75,-0.75,-0.75,-0.6,-0.2,0.2,0.75,1.5,2.2,2.75,3.25,3.75,4.25,4.5,4.3,3.7,3.2,2.2,1.2)
+	
+if(TRUE)
+{
+	pngWidth <- 1920 * 2
+	pngHeight <-  1080 * 2
+	fTitle <- 7
+	fAxis <- 5
+	fLab <- 7
+	myLWD <- 6
+}
+
+for(i in 1:length(filesToPlot))
+{
+	fileData <- scan(filesToPlot[i], what="character", sep='\n', blank.lines.skip = F)
+	mVersion <- as.numeric(strsplit(fileData[grep("###",fileData)],"V")[[1]][2])
+	siteID <- names[i]
+	#siteID <- sub(".txt","",sub("METRICS_","",basename(filesToPlot[i])))
+	
+	hrdbaTitle <- NULL
+	hrdbaTruncTitle <- NULL
+	paTitle <- NULL
+	hzdbTitle <- NULL
+	hzhrTitle <- NULL
+	
+	dayTime <- as.numeric(gsub(".*:\\s(\\d{2}).*","\\1",fileData[grep("Day:",fileData)]))
+	nightTime <- as.numeric(gsub(".*:\\s(\\d{2}).*","\\1",fileData[grep("Night:",fileData)]))
+	soiName <- gsub("Source of Interest: ","",fileData[grep("Source of Interest: ",fileData)])
+    
+	if(titlesOnPlots)
+	{
+		hrdbaTitle <- paste(siteID,": Hour v. Sound Pressure Level",sep='')
+		hrdbaTruncTitle <- paste(siteID,": Hour v. Sound Pressure Level (20Hz - 1250Hz)",sep='')
+		paTitle <- paste(siteID,": Hour v. Percent Time Audible",sep='')
+		hzdbTitle <- paste(siteID,": Frequency v. Sound Pressure Level",sep='')
+		hzhrTitle <- paste(siteID,": Contour Plot for ",sep='')
+	}
+  
+########################
+# Percent Time Audible #
+########################
+
+if(plotPA)
+{
+	if(mVersion > 1.2){
+		dataPos <- grep("Time Audible \\(%\\)",fileData)
+	}else dataPos <- grep("Percent Time Audible",fileData)
+	
+	if(length(dataPos) != 0)
+	{
+		for(sIdx in 1:length(dataPos))
+		{
+			nAD <- numAnalyzedDays
+			
+			gInfo <- scan(filesToPlot[i], skip = dataPos[sIdx] - 1, sep = "!", n = 1, what = "character")
+			
+			season <- gsub(".*,\\s([A-Za-z]+)\\s.+$","\\1",gInfo)
+			
+			pngFile <- paste(outDir,"\\",siteID,"_audibleplot.png",sep='')
+			
+			if(grepl("n = ", gInfo)) nAD <- gsub(".+\\s(\\d+)\\)","\\1",gInfo)
+			
+			paTitleP <- paTitle
+			
+			if(season != "All") pngFile <- paste(outDir,"\\",siteID,"_",season,"_audibleplot.png",sep='')
+			if(season != "All" & titlesOnPlots) paTitleP <- paste(paTitle, " (", season, ")", sep="")
+			
+			if(mVersion > 1.2){
+				data <- t(read.table(filesToPlot[i],skip = dataPos[sIdx], nrows = 2,header=T,row.names=1,sep='\t'))
+			}else data <- read.table(filesToPlot[i],skip = dataPos[sIdx], nrows = 24,header=T,sep='\t')
+			
+			png(file=pngFile,
+			bg="white",width=pngWidth,height=pngHeight)
+	
+			par(mar=c(fTitle * 2, fTitle * 2, fAxis * 2, fAxis) + 0.1, mgp=c(fTitle, 1, 0), ljoin = 1, lend=2)
+			#par(mar=c(6, 7, 5, 2) + 0.1, mgp=c(4, 1, 0), family="serif")
+	
+			plot(1, 1, main=paTitleP, xlab="",
+				ylab="" ,type="n", xlim=c(0,24), ylim=c(0,100), bty="l",
+				xaxs="i", yaxs="i", xaxt="n", yaxt="n", cex.lab=fLab, cex.axis=fAxis, cex.main=fTitle)
+	
+			mtext("Hour", side=1, line=fTitle + 2, cex=fLab)
+			mtext(paste("n = ",nAD,sep=""), side=1, line=fTitle * 2 - 1, cex=fAxis)
+			mtext("Audibility (%)", side=2, line=fTitle + 2, cex=fLab)
+			
+			axis(2,at=seq(0,100,10),las=2,labels=F,fg="grey90",tck=1, lwd=myLWD)
+			axis(2,at=seq(0,100,10),las=2,cex.axis=fAxis)
+			
+			axis(1,at=seq(0.5, 23.5, by=1),las=1,labels=c(0:23),fg="white",line=2, cex.axis=fAxis)
+			
+			barplot(data[,"Total"],xpd=F,names.arg=c(0:23),border="black",axes=F, axisnames=F,
+				add=T,space=0,col="grey80",axis.lty=1,cex.names=fAxis,las=1, lwd=myLWD)
+				
+			barplot(data[,"SoI"],xpd=F,names.arg=c(0:23),border="black",axes=F, axisnames=F,
+				add=T,space=0,col="grey50",axis.lty=1,cex.names=fAxis,las=1, lwd=myLWD)
+	
+			legend(1.2,30,legend=c(soiName, "Total"), pch=c(22,22),
+				pt.bg=c("grey50","grey80"),bg="white",cex=fAxis, border="black")
+	
+			graphics.off()
+		}
+	}
+}
+
+###############
+# Hour v. dBA #
+###############
+for(pType in 1:2)
+{
+	if(plotHRDBACOMB[pType])
+	{
+		if(mVersion > 1.2){
+			if(pType == 1) dataPos <- grep("Median Hourly Metrics \\(dBA\\)",fileData)
+			if(pType == 2) dataPos <- grep("Median Hourly Metrics \\(dBT\\)",fileData)
+		}else
+		{
+			if(pType == 1) dataPos <- grep("Median dBA values by Hour",fileData)
+			if(pType == 2) dataPos <- grep("Median Truncated dBA values by Hour",fileData)
+		}
+		
+		if(length(dataPos) != 0)
+		{
+			for(sIdx in 1:length(dataPos))
+			{
+				gInfo <- scan(filesToPlot[i], skip = dataPos[sIdx] - 1, sep = "!", n = 1, what = "character")
+				season <- gsub(".*,\\s(\\w+)\\s.*","\\1",gInfo)
+				nSamples <- gsub(".*=\\s(\\d+)hr.*","\\1",gInfo)
+				
+				pngFile <- paste(outDir,"\\",siteID,"_DBAvHR.png",sep='')
+				if(pType == 2) pngFile <- paste(outDir,"\\",siteID,"_DBTvHR.png",sep='')
+				
+				thisTitle <- hrdbaTitle
+				if(pType == 2) thisTitle <- hrdbaTruncTitle
+			
+				if(season != "All") 
+				{
+					pngFile <- paste(outDir,"\\",siteID,"_",season,"_DBAvHR.png",sep='')
+					if(pType == 2) pngFile <- paste(outDir,"\\",siteID,"_",season,"_DBTvHR.png",sep='')
+					if(titlesOnPlots)
+					{
+						thisTitle <- paste(hrdbaTitle, " (", season, ")", sep="")
+						if(pType == 2) thisTitle <- paste(hrdbaTruncTitle, " (", season, ")", sep="")
+					}
+				}
+				
+				if(mVersion > 1.2){
+					data <- t(read.table(filesToPlot[i], skip = dataPos[sIdx], nrows = 9, header=T,row.names=1,
+					sep='\t', na.strings=c("--.-","-888.0")))
+				}else data <- read.table(filesToPlot[i], skip = dataPos[sIdx], nrows = 24, header=T,
+					sep='\t', na.strings=c("--.-","-888.0"))
+					
+				hasLNAT <- sum(!is.na(data[,"Lnat"])) > 0
+				
+				dataYmin <- min(data[,"L090"], na.rm=T)
+				if(hasLNAT) dataYmin <- min(dataYmin, min(data[,"Lnat"], na.rm=T))
+				dataYmax <- max(data[,"L010"], na.rm=T)
+				
+				if(ceiling(dataYmin / 3) * 3 < floor(dataYmax / 3) * 3)
+				{
+					tempAxis <- seq(ceiling(dataYmin / 3) * 3, floor(dataYmax / 3) * 3, by = 3)
+					if((tempAxis[1] - dataYmin) < 2) tempAxis <- tempAxis[-1]
+					if(length(tempAxis) != 0) 
+					{	
+						if((dataYmax - tempAxis[length(tempAxis)]) < 2) tempAxis <- tempAxis[-(length(tempAxis))]
+						tempAxis <- c(dataYmin, tempAxis, dataYmax)
+					}else
+					{
+						tempAxis <- c(dataYmin, dataYmax)
+					}
+				}else
+				{
+					tempAxis <- c(dataYmin, dataYmax)
+				}
+		
+				x <- c(0:23)
+				
+				png(filename = pngFile,width=pngWidth,height=pngHeight)
+				
+				par(mar=c(fTitle * 2, fTitle * 2 + 5, fAxis * 2, fAxis) + 0.1, mgp=c(fTitle, 1, 0), ljoin = 1, lend=2)
+	  
+				plot(1,1,type="n",main=thisTitle,bty="l",xaxt="n",yaxt="n",xlab="", ylab="",
+					yaxs="i", xlim=c(0,23),ylim=c(yMinHr,yMaxHr),cex.main=fTitle)
+				
+				axis(1,at=c(0:23),labels=x,cex.axis=fAxis, line=2, fg="white")
+		
+				axis(2,at=c(tempAxis[1], tempAxis[length(tempAxis)]),labels=T,las=2,tick=T,cex.axis=fAxis) 
+				axis(2,at=tempAxis[c(-1, -1 * length(tempAxis))],labels=T,las=2,tick=T,cex.axis=fAxis * 0.75, col.axis="grey50") 
+				axis(2,at=c(yMaxHr, yMinHr),labels=T,las=2,tick=T,cex.axis=fAxis * 0.75, col.axis="grey50") 
+				
+				mtext("Hour", side=1, line=fTitle + 1, cex=fLab)
+				
+				if(pType == 1) mtext(expression( plain("Percentile Sound Level (L" [plain("A eq,1s")]*")")), side=2, line=fTitle + 4, cex=fLab)
+				if(pType == 2) mtext(expression( plain("Percentile Sound Level (L" [plain("A eq,1s,NS")]*")")), side=2, line=fTitle + 4, cex=fLab)
+				mtext(paste("n = ",nSamples,sep=""), side=1, line=fTitle * 2 - 1, cex=fAxis)
+
+				segments(x,data[,"L010"],x,data[,"L090"], col="grey75", lwd=myLWD)	
+				segments(x - 0.125, data[,"L090"], x + 0.125, data[,"L090"], col="grey75", lwd=myLWD)
+				segments(x - 0.125, data[,"L010"], x + 0.125, data[,"L010"], col="grey75", lwd=myLWD)
+				
+				if(hasLNAT){
+					rect(x - 0.25, data[,"L050"], x + 0.25, data[,"Lnat"], col="black", lwd=myLWD)
+				}else{
+					segments(x - 0.25, data[,"L050"], x + 0.25, data[,"L050"], lwd=myLWD)
+				}
+			
+				### Legend ####################################################
+		
+				xLegHr <- 0
+				yLegHr <- yMaxHr
+		
+				if(all(data[1:4,"L010"] < yMaxHr - 10, na.rm=T))
+				{
+					xLegHr <- 0
+					yLegHr <- yMaxHr
+				}else if(all(data[1:4,"L090"] > yMinHr + 10, na.rm=T))
+				{
+					xLegHr <- 0
+					yLegHr <- yMinHr + 10
+				}
+			
+				segments(xLegHr + 0.625, yLegHr - 1, xLegHr + 0.625, yLegHr - 9, col="grey75", lwd=myLWD)
+				
+				segments(xLegHr + 0.5, yLegHr - 1, xLegHr + 0.75, yLegHr - 1, col="grey75", lwd=myLWD)
+				segments(xLegHr + 0.5, yLegHr - 9, xLegHr + 0.75, yLegHr - 9, col="grey75", lwd=myLWD)
+		
+				if(hasLNAT){
+					rect(xLegHr + 0.375, yLegHr - 6.5, xLegHr + 0.875, yLegHr - 3.5,col="black", border="black")
+					text(xLegHr + 0.75, yLegHr - 3.5, expression(phantom(0)%<-%"L"[A50]), adj = c(0,0.5), cex = fAxis)
+					text(xLegHr + 0.75, yLegHr - 6.5, expression(phantom(0)%<-%"L"[ANAT]), adj = c(0,0.5), cex = fAxis)
+				}else{
+					segments(xLegHr + 0.375, yLegHr - 5, xLegHr + 0.875, yLegHr - 5,col="black", lwd=myLWD)
+					text(xLegHr + 0.75, yLegHr - 5, expression(phantom(0)%<-%"L"[A50]), adj = c(0,0.5), cex = fAxis)
+				}
+		
+				text(xLegHr + 0.75, yLegHr - 1, expression(phantom(0) %<-% "L"[A10]), adj = c(0,0.5), cex = fAxis)
+				text(xLegHr + 0.75, yLegHr - 8.9, expression(phantom(0)%<-%"L"[A90]), adj = c(0,0.5), cex = fAxis)
+
+				graphics.off()
+			}
+		}
+	}
+}
+
+##############
+# Freq v. dB #
+##############
+
+if(plotFREQDB)
+{
+	dataDayPos <- c(0, 0, 0, 0)
+	dataNightPos <- c(0, 0, 0, 0)
+	
+	if(mVersion > 1.2){
+		tempDayPos <-  grep("Median Daytime Frequency Metrics \\(dB\\).*Sum",fileData)
+		tempNightPos <- grep("Median Nighttime Frequency Metrics \\(dB\\).*Sum",fileData)
+	
+		if(length(tempDayPos) > 0) dataDayPos[1] <- tempDayPos
+		if(length(tempNightPos) > 0) dataNightPos[1] <- tempNightPos
+		
+		tempDayPos <- grep("Median Daytime Frequency Metrics \\(dB\\).*Fal",fileData)
+		tempNightPos <- grep("Median Nighttime Frequency Metrics \\(dB\\).*Fal",fileData)
+	
+		if(length(tempDayPos) > 0) dataDayPos[2] <- tempDayPos
+		if(length(tempNightPos) > 0) dataNightPos[2] <- tempNightPos
+		
+		tempDayPos <- grep("Median Daytime Frequency Metrics \\(dB\\).*Win",fileData)
+		tempNightPos <- grep("Median Nighttime Frequency Metrics \\(dB\\).*Win",fileData)
+		
+		if(length(tempDayPos) > 0) dataDayPos[3] <- tempDayPos
+		if(length(tempNightPos) > 0) dataNightPos[3] <- tempNightPos
+	
+		tempDayPos <- grep("Median Daytime Frequency Metrics \\(dB\\).*Spr",fileData)
+		tempNightPos <- grep("Median Nighttime Frequency Metrics \\(dB\\).*Spr",fileData)
+		
+		if(length(tempDayPos) > 0) dataDayPos[4] <- tempDayPos
+		if(length(tempNightPos) > 0) dataNightPos[4] <- tempNightPos
+	}else
+	{
+		tempDayPos <-  grep("SPL.*Day.*Sum",fileData)
+		tempNightPos <- grep("SPL.*Night.*Sum",fileData)
+	
+		if(length(tempDayPos) > 0) dataDayPos[1] <- tempDayPos
+		if(length(tempNightPos) > 0) dataNightPos[1] <- tempNightPos
+		
+		tempDayPos <- grep("SPL.*Day.*Fal",fileData)
+		tempNightPos <- grep("SPL.*Night.*Fal",fileData)
+	
+		if(length(tempDayPos) > 0) dataDayPos[2] <- tempDayPos
+		if(length(tempNightPos) > 0) dataNightPos[2] <- tempNightPos
+		
+		tempDayPos <- grep("SPL.*Day.*Win",fileData)
+		tempNightPos <- grep("SPL.*Night.*Win",fileData)
+		
+		if(length(tempDayPos) > 0) dataDayPos[3] <- tempDayPos
+		if(length(tempNightPos) > 0) dataNightPos[3] <- tempNightPos
+	
+		tempDayPos <- grep("SPL.*Day.*Spr",fileData)
+		tempNightPos <- grep("SPL.*Night.*Spr",fileData)
+		
+		if(length(tempDayPos) > 0) dataDayPos[4] <- tempDayPos
+		if(length(tempNightPos) > 0) dataNightPos[4] <- tempNightPos
+	}
+			
+	tohVals <- c(93.2,86.3,78.5,68.7,59.5,51.1,44,37.5,31.5,26.5,22.1,17.9,14.4,
+		11.4,8.4,5.8,3.8,2.1,1.0,0.8,1.9,0.5,-1.5,-3.1,-4,-3.8,-1.8,2.5,
+		6.8,9.8,14.4,43.7,84.7)
+ 
+	xc <- 1:33
+		
+	myXLabels <- c("12.5","25","50","100","200","400","800","1.6k","3.15k","6.3k","12.5k")
+	myXLabelPos <- seq(from=1, to=33, by=3)
+	
+	for(sIdx in 1:4)
+	{
+		hasDay <- dataDayPos[sIdx] > 0
+		hasNight <- dataNightPos[sIdx] > 0
+		if(hasDay || hasNight)
+		{
+			nSamplesDay <- ""
+			nSamplesNight <- ""
+			
+			if(hasDay) 
+			{
+				gInfo <- scan(filesToPlot[i], skip = dataDayPos[sIdx] - 1, sep = "\n", n = 1, what = "character")
+				nSamplesDay <- paste(gsub(".*=\\s(\\d+)hr.*","\\1",gInfo), " daytime hours", sep="")
+				dayString <- paste("Day (",dayTime,"am-",nightTime%%12,"pm)",sep="")
+				
+				if(mVersion > 1.2){
+					dataDay <- t(read.table(filesToPlot[i], skip = dataDayPos[sIdx], nrows = 4, header=T, row.names=1,
+					sep='\t', na.strings=c("--.-","-888.0")))
+				}else dataDay <- read.table(filesToPlot[i], skip = dataDayPos[sIdx], nrows = 33,
+					header=T, sep='\t', na.strings=c("--.-","-888.0"))
+			}
+			if(hasNight)
+			{
+				gInfo <- scan(filesToPlot[i], skip = dataNightPos[sIdx] - 1, sep = "\n", n = 1, what = "character")
+				nSamplesNight <- paste(gsub(".*=\\s(\\d+)hr.*","\\1",gInfo), " nighttime hours", sep="")
+				nightString <- paste("Night (",nightTime%%12,"pm-",dayTime,"am)",sep="")
+				
+				if(mVersion > 1.2){
+					dataNight <- t(read.table(filesToPlot[i], skip = dataNightPos[sIdx], nrows = 4, header=T, row.names=1,
+					sep='\t', na.strings=c("--.-","-888.0")))
+				}else dataNight <- read.table(filesToPlot[i], skip = dataNightPos[sIdx], nrows = 33,
+					header=T, sep='\t', na.strings=c("--.-","-888.0"))
+			}
+			
+			season <- gsub(".*,\\s(\\w+)\\s.*","\\1",gInfo)
+			
+			pngFile <- paste(outDir,"\\",siteID,"_SPLvFREQ.png",sep='')
+			
+			hzdbTitleP <- hzdbTitle
+			
+			if(season != "All") pngFile <- paste(outDir,"\\",siteID,"_",season,"_SPLvFREQ.png",sep='')
+			if(season != "All" & titlesOnPlots) hzdbTitleP <- paste(hzdbTitle, " (", season, ")", sep="")
+			
+			xLabPos <- 1
+			yLabPos <- yMinHz + 14
+			
+			if(hasDay)
+			{
+				if(hasNight)
+				{
+					if(all(dataDay[26:33,"L010"] < (yMaxHz - 15), na.rm=T) && all(dataNight[26:33,"L010"] < (yMaxHz - 15), na.rm=T))
+					{
+						xLabPos <- 26
+						yLabPos <- (yMaxHz - 2)
+					}
+				}else{
+					if(all(dataDay[26:33,"L010"] < (yMaxHz - 15), na.rm=T))
+					{
+						xLabPos <- 26
+						yLabPos <- (yMaxHz - 2)
+					}
+				}
+			}else
+			{
+				if(all(dataNight[26:33,"L010"] < (yMaxHz - 15), na.rm=T))
+				{			
+					xLabPos <- 26
+					yLabPos <- (yMaxHz - 2)
+				}
+			}
+			
+			if(hasDay) 
+			{
+				hasLNAT <- !is.na(dataDay[10,"Lnat"])
+			}else hasLNAT <- !is.na(dataNight[10,"Lnat"])
+
+			#if(hasDay && is.na(dataDay[1,2]))
+			#{
+			#	xc <- xc[3:33]
+			#}else if(hasNight && is.na(dataNight[1,2])) xc <- xc[3:33]
+			
+			if(hasDay)
+			{
+				if(hasNight)
+				{
+					dataYmin <- min(min(dataDay[,"L090"], na.rm=T),min(dataNight[,"L090"], na.rm=T))
+					dataYmax <- max(max(dataDay[,"L010"], na.rm=T),max(dataNight[,"L010"], na.rm=T))
+				}else{
+					dataYmin <- min(dataDay[,"L090"], na.rm=T)
+					dataYmax <- max(dataDay[,"L010"], na.rm=T)
+				}
+			}else{
+				dataYmin <- min(dataNight[,"L090"], na.rm=T)
+				dataYmax <- max(dataNight[,"L010"], na.rm=T)
+			}
+			
+			if(ceiling(dataYmin / 3) * 3 < floor(dataYmax / 3) * 3)
+			{
+				tempAxis <- seq(ceiling(dataYmin / 3) * 3, floor(dataYmax / 3) * 3, by = 3)
+				if((tempAxis[1] - dataYmin) < 2) tempAxis <- tempAxis[-1]
+				if(length(tempAxis) != 0) 
+				{	
+					if((dataYmax - tempAxis[length(tempAxis)]) < 2) tempAxis <- tempAxis[-(length(tempAxis))]
+					tempAxis <- c(dataYmin, tempAxis, dataYmax)
+				}else
+				{
+					tempAxis <- c(dataYmin, dataYmax)
+				}
+			}else
+			{
+				tempAxis <- c(dataYmin, dataYmax)
+			}
+			
+			png(pngFile,width=pngWidth, height=pngHeight)
+
+			par(mar=c(fTitle * 2, fTitle * 2, fAxis * 2, fAxis) + 0.1, mgp=c(fTitle, 1, 0), ljoin = 1, lend=2)
+
+			plot(1,1,type="n",main=hzdbTitleP,xlab="",ylab="",axes=T,lty=1,bty="l",xaxs="i",yaxs="i",
+				xaxt="n",yaxt="n",xlim=c(0,34),ylim=c(yMinHz,yMaxHz), cex.main=fTitle, lwd=myLWD)
+
+			mtext("Frequency (Hz)", side=1, line=fTitle + 1, cex=fLab)
+			mtext("Sound Pressure Level (dB)", side=2, line=fTitle + 2, cex=fLab)
+			
+			if(hasDay && hasNight)
+			{
+				mtext(paste("n = ", nSamplesDay, ", ", nSamplesNight ,sep=""), side=1, line=fTitle * 2 - 1, cex=fAxis)
+			}else mtext(paste("n =", nSamplesDay, nSamplesNight ,sep=""), side=1, line=fTitle * 2 - 1, cex=fAxis)
+		
+			polygon(c(0,0,xc[2:33],34,34),c(yMinHz,tohVals,100,yMinHz),col=rgb(0.95,0.95,0.95),border=NA)
+			
+			axis(1,at=myXLabelPos,labels=myXLabels,tck=-0.0125, las=1,tick=F,cex.axis=fAxis, line=2)
+			axis(1,at=c(0.5,xc + 0.5),labels=F,tck=0.0125, col="grey50")
+			axis(1,at=c(0.5,xc + 0.5),labels=F,tck=-0.0125)
+			
+			axis(2,at=c(tempAxis[1], tempAxis[length(tempAxis)]),labels=T,las=2,tick=T,cex.axis=fAxis) 
+			axis(2,at=tempAxis[c(-1, -1 *length(tempAxis))],labels=T,las=2,tick=T,cex.axis=fAxis * 0.75, col.axis="grey50") 
+			axis(2,at=c(yMaxHz, yMinHz),labels=T,las=2,tick=T,cex.axis=fAxis * 0.75, col.axis="grey50") 
+
+			dayColor <- c("palegoldenrod", "lightgoldenrod","goldenrod")
+			nightColor <- c("plum1", "plum3", "darkorchid")
+			
+			###Day
+			if(hasDay)
+			{
+				rect(xc, dataDay[,"L010"], xc - 0.25, dataDay[,"L090"], lwd=myLWD, border=dayColor[2], col=dayColor[1])
+				if(hasLNAT){
+					rect(xc, dataDay[,"Lnat"], xc - 0.25, dataDay[,"L050"], col=dayColor[3], border=dayColor[3], lwd=0.5)
+				}else
+				{	
+					segments(xc, dataDay[,"L050"], xc - 0.25, dataDay[,"L050"], lwd = myLWD, col=dayColor[3])
+				}	
+			}			
+				
+			###Night
+			if(hasNight)
+			{
+				rect(xc, dataNight[,"L010"], xc + 0.25, dataNight[,"L090"], lwd=myLWD, border=nightColor[2], col=nightColor[1])
+				if(hasLNAT){
+					rect(xc, dataNight[,"Lnat"], xc + 0.25, dataNight[,"L050"], col=nightColor[3], border=nightColor[3], lwd=0.5)
+				}else
+				{	
+					segments(xc, dataNight[,"L050"], xc + 0.25, dataNight[,"L050"], lwd = myLWD, col=nightColor[3])
+				}
+			}			
+						
+			### Legend ###############################################################################
+			if(hasLNAT){
+				rect(xc[xLabPos], yLabPos - 1, xc[xLabPos] - 0.25, yLabPos - 11, col="white", border="grey50", lwd=myLWD)
+				rect(xc[xLabPos], yLabPos - 4, xc[xLabPos] - 0.25, yLabPos - 8, col = "grey50", border="grey50", lwd=0.5)
+
+				text(xc[xLabPos] - 0.25, yLabPos - 1, expression(phantom(0)*phantom(0)%<-%"L"[10]), adj = c(0,0.5), cex = fAxis)
+				text(xc[xLabPos] - 0.25, yLabPos - 4, expression(phantom(0)*phantom(0)%<-%"L"[50]), adj = c(0,0.5), cex = fAxis)   
+				text(xc[xLabPos] - 0.25, yLabPos - 8, expression(phantom(0)*phantom(0)%<-%"L"[NAT]), adj = c(0,0.5), cex = fAxis)
+				text(xc[xLabPos] - 0.25, yLabPos - 10.9, expression(phantom(0)*phantom(0)%<-%"L"[90]), adj = c(0,0.5), cex = fAxis)
+
+				if(hasDay) rect(xc[xLabPos + 3], yLabPos - 2, xc[xLabPos + 3] + 0.5, yLabPos - 4, col = dayColor[1], border = dayColor[2], lwd=myLWD)
+				if(hasNight) rect(xc[xLabPos + 3], yLabPos - 8, xc[xLabPos + 3] + 0.5, yLabPos - 10, col = nightColor[1], border = nightColor[2], lwd=myLWD) 
+				if(hasDay) text(xc[xLabPos + 3] + 0.75, yLabPos - 3, dayString, adj = c(0,0.5), cex = fAxis)
+				if(hasNight) text(xc[xLabPos + 3] + 0.75, yLabPos - 9, nightString, adj = c(0,0.5), cex = fAxis)
+			}else{			
+				rect(xc[xLabPos], yLabPos - 1, xc[xLabPos] - 0.25, yLabPos - 11, border="grey50", lwd=myLWD)
+				segments(xc[xLabPos], yLabPos - 6, xc[xLabPos] - 0.25, yLabPos - 6, lwd=myLWD) 
+
+				text(xc[xLabPos] - 0.25, yLabPos - 1, expression(phantom(0)*phantom(0)%<-%"L"[10]), adj = c(0,0.5), cex = fAxis)
+				text(xc[xLabPos] - 0.25, yLabPos - 6, expression(phantom(0)*phantom(0)%<-%"L"[50]), adj = c(0,0.5), cex = fAxis)
+				text(xc[xLabPos] - 0.25, yLabPos - 10.9, expression(phantom(0)*phantom(0)%<-%"L"[90]), adj = c(0,0.5), cex = fAxis)
+
+				if(hasDay) rect(xc[xLabPos + 3], yLabPos - 2, xc[xLabPos + 3] + 0.5, yLabPos - 4, col = dayColor[1], border = dayColor[2], lwd=myLWD)
+				if(hasNight) rect(xc[xLabPos + 3], yLabPos - 8, xc[xLabPos + 3] + 0.5, yLabPos - 10, col = nightColor[1], border = nightColor[2], lwd=myLWD) 
+				if(hasDay) text(xc[xLabPos + 3] + 0.75, yLabPos - 3, dayString, adj = c(0,0.5), cex = fAxis)
+				if(hasNight) text(xc[xLabPos + 3] + 0.75, yLabPos - 9, nightString, adj = c(0,0.5), cex = fAxis)
+			}
+
+			segments(10, yMinHz + 5 + 0.5, 19, yMinHz + 5 + 0.5, lwd=myLWD, col="grey50")
+			segments(10, yMinHz + 5 + 0.5, 10, yMinHz + 7 + 0.5, lwd=myLWD, col="grey50")
+			segments(19, yMinHz + 5 + 0.5, 19, yMinHz + 7 + 0.5, lwd=myLWD, col="grey50")
+			segments(14.5, yMinHz + 5 + 0.5, 14.5, yMinHz + 3 + 0.5, lwd=myLWD, col="grey50")
+			text(14.5, yMinHz + 1.65 + 0.5, "Transportation", cex = fAxis, col="grey50")
+
+			segments(15, yMaxHz - 5 - 0.5, 25, yMaxHz - 5 - 0.5, lwd=myLWD, col="grey50")
+			segments(15, yMaxHz - 5 - 0.5, 15, yMaxHz - 7 - 0.5, lwd=myLWD, col="grey50")
+			segments(25, yMaxHz - 5 - 0.5, 25, yMaxHz - 7 - 0.5, lwd=myLWD, col="grey50")
+			segments(20, yMaxHz - 3 - 0.5, 20, yMaxHz - 5 - 0.5, lwd=myLWD, col="grey50")
+			text(20, yMaxHz - 1.75 - 0.5, "Conversation", cex = fAxis, col="grey50")
+
+			segments(20, yMinHz + 5 + 0.5, 29, yMinHz + 5 + 0.5, lwd=myLWD, col="grey50")
+			segments(20, yMinHz + 5 + 0.5, 20, yMinHz + 7 + 0.5, lwd=myLWD, col="grey50")
+			segments(29, yMinHz + 5 + 0.5, 29, yMinHz + 7 + 0.5, lwd=myLWD, col="grey50")
+			segments(24.5, yMinHz + 5 + 0.5, 24.5, yMinHz + 3 + 0.5, lwd=myLWD, col="grey50")
+			text(24.5, yMinHz + 1.65 + 0.5, "Song birds", cex = fAxis, col="grey50")
+
+			text(4, yMinHz + 15, "Threshold of human hearing", cex = fAxis, col="grey50", srt=-45)
+			
+			graphics.off()
+			
+			#Hillenbrand J, Getty LA, Clark MJ, Wheeler K (1995) Acoustic characteristics of American English vowels. J Acoust Soc Am 97: 3099-3111.
+		}
+	}
+
+}
+
+################
+# Contour Plot #
+################
+
+if(plotCONTOUR)
+{
+	dataPos <- grep("L[0-9a-zA-Z]{2,3} Contour",fileData)
+	if(length(dataPos) != 0)
+	{
+		for(sIdx in 1:length(dataPos))
+		{
+			gInfo <- scan(filesToPlot[i], skip = dataPos[sIdx] - 1, sep = "\n", nlines = 1, what = "character")
+			season <- gsub(".*,\\s(\\w+)\\s.*","\\1",gInfo)
+			nSamples <- gsub(".*=\\s(\\d+)hr.*","\\1",gInfo)
+			lVal <- gsub("L([0-9a-zA-Z]{2,3}).*","\\1",gInfo)
+			pngFile <- paste(outDir,"\\",siteID,"_L",lVal,"_CONTOUR.png",sep='')
+			
+			hzhrTitleA <- paste(hzhrTitle, "L", sep="")
+			hzhrTitleB <- ""
+			
+			if(season != "All")
+			{
+				pngFile <- paste(outDir,"\\",siteID,"_",season,"_L",lVal,"_CONTOUR.png",sep='')
+				hzhrTitleB <- paste(" (", season, ")", sep="")
+			}
+			
+			data <- as.matrix(read.table(filesToPlot[i],skip = dataPos[sIdx],	nrows = 24, header=T,
+				sep='\t'))[,2:34]
+			
+			freqs <- c("20","40","80","160","315","630","1.25k","2.5k","5k","10k","20k")
+				
+			png(filename = pngFile,width=pngWidth,height=pngHeight)
+			
+			#par(mar=c(5.1,4.1,4.1,5.1))		
+			par(mar=c(fTitle * 2, fTitle * 2 + 2, fAxis * 2, fAxis) + 0.1, mgp=c(fTitle, 1, 0), ljoin = 1, lend=2)
+			
+			body(filled.contour)[[grep("rect",body(filled.contour))]] <- substitute(rect(0, levels[-length(levels)], 1, levels[-1L], col = col, border = col))
+			
+			filled.contour(x = 0:23, y = 1:33, data, zlim=c(-9,87),col=colorRampPalette(c("blue","orange","white"))(960),nlevels=960, 
+				key.axes = axis(4,at=seq(-9,87,6),las=2,cex.axis=fAxis), 
+				plot.axes = {	
+								axis(1,at=c(0:23),labels=T,cex.axis=fAxis, line=2, fg="white")
+								axis(2,at=seq(3,33,3),labels=freqs,las=2,cex.axis=fAxis)			
+							},
+				plot.title = title(main=substitute(titleA[x]*titleB,list(titleA=hzhrTitleA,x=lVal,titleB=hzhrTitleB)),
+					xlab="", ylab="", cex.main=fTitle)
+			)
+			
+			mtext("Hour", side=1, line=fTitle + 2, cex=fLab)
+			mtext(paste("n = ",nSamples,sep=""), side=1, line=fTitle * 2 - 1, cex=fAxis)
+			mtext("Frequency (Hz)", side=2, line=fTitle + 4, cex=fLab)
+			mtext("Sound Pressure Level (dB)",side=4,line=3, cex=fAxis)
+		
+			graphics.off()
+		}
+	}
+}
+
+}
+
+
+```
+
+```{r, results='asis',fig.cap=paste("Your caption."), echo=FALSE, include=TRUE}
+season<-params$season
+currentseason<-paste("_",season,"_",sep="")
+seasonlist<-list("_Summer_","_Fall_","_Spring_","_Winter_")
+
+removeseasons<-lapply(seasonlist, setdiff, currentseason)
+mydir <- outDir
+delfiles <- dir(path=outDir ,pattern=as.character(removeseasons[1]))
+file.remove(file.path(mydir, delfiles))
+
+delfiles <- dir(path=outDir ,pattern=as.character(removeseasons[2]))
+file.remove(file.path(mydir, delfiles))
+
+delfiles <- dir(path=outDir ,pattern=as.character(removeseasons[3]))
+file.remove(file.path(mydir, delfiles))
+
+delfiles <- dir(path=outDir ,pattern=as.character(removeseasons[4]))
+file.remove(file.path(mydir, delfiles))
+```
+
+
+
+### **Standard Plots for Acoustic Monitoring Reports**
+#### Plots for each site (`r (names)`), respectively. \n
+#### **Time Audibility:** top two noise sources of each site and total noise audibility by hour. \n
+#### **Freqplot:**	L10, L50, [Lnat], and L90 1/3 octave band plots \n
+#### **Hourplot:**	Median hourly wideband dBA values \n
+#### **Contour:**	Plot with Hour on the X-axis, Frequency on the Y axis. \n
+#### *Images (.png) can be found in the following folder:* \n
+
+`r (outDir)`
+
+## *Plots* {.tabset}
+
+### Audibility (1 Source)
+
+
+```{r, results='asis',fig.cap=paste("Your caption."), echo=FALSE, include=TRUE, warning=FALSE, message=FALSE}
+
+audpngfiles <- list.files(path = outDir, pattern = "PercentAud_top1", full.names = TRUE)
+
+
+for (f in audpngfiles) {
+  cat(paste0("![image_label](", f, ")\n"))
+  
+}
+
+
+```
+
+### Audibility (2 Source)
+
+
+```{r, results='asis',fig.cap=paste("Your caption."), echo=FALSE, include=TRUE, warning=FALSE, message=FALSE}
+
+# List all PNG files with the pattern "PercentAud_top2"
+audpngfiles <- list.files(path = outDir, pattern = "PercentAud_top2", full.names = TRUE)
+
+# Loop through each file and create a Markdown image tag
+for (f in audpngfiles) {
+  cat(paste0("![image_label](", f, ")\n"))
+}
+
+
+```
+
+
+### Audibility (All Sources)
+
+
+```{r, results='asis',fig.cap=paste("Your caption."), echo=FALSE, include=TRUE, warning=FALSE, message=FALSE}
+
+# List all PNG files with the pattern "PercentAud_top2"
+audpngfiles <- list.files(path = outDir, pattern = "PercentAud_all", full.names = TRUE)
+
+# Loop through each file and create a Markdown image tag
+for (f in audpngfiles) {
+  cat(paste0("![image_label](", f, ")\n"))
+}
+
+
+```
+
+
+
+### Frequency
+
+
+```{r, results='asis',fig.cap=paste("Your caption."), echo=FALSE, include=TRUE, warning=FALSE, message=FALSE}
+# List all PNG files with the pattern "SPLvFREQ"
+freqpngfiles <- list.files(path = outDir, pattern = "SPLvFREQ", full.names = TRUE)
+
+# Loop through each file and create a Markdown image tag
+for (f in freqpngfiles) {
+  cat(paste0("![image_label](", f, ")\n"))
+}
+
+```
+
+
+### Hourly (DBA)
+
+
+```{r, results='asis',fig.cap=paste("Your caption."), echo=FALSE, include=TRUE, warning=FALSE, message=FALSE}
+
+
+# Set pattern for file search
+pat2 <- "DBTvHR"
+
+# List all PNG files with the pattern "DBAvHR"
+hourpngfiles <- list.files(path = outDir, pattern = "DBAvHR", full.names = TRUE)
+
+# Loop through each file and create a Markdown image tag
+for (f in hourpngfiles) {
+  cat(paste0("![image_label](", f, ")\n"))
+}
+
+
+```
+
+### Hourly (DBT)
+
+
+```{r, results='asis',fig.cap=paste("Your caption."), echo=FALSE, include=TRUE, warning=FALSE, message=FALSE}
+
+# List all PNG files with the pattern "DBTvHR"
+hourpngfiles <- list.files(path = outDir, pattern = "DBTvHR", full.names = TRUE)
+
+# Loop through each file and create a Markdown image tag
+for (f in hourpngfiles) {
+  cat(paste0("![image_label](", f, ")\n"))
+}
+
+
+```
+
+
+
+
+### Contour
+
+
+```{r, results='asis',fig.cap=paste("Your caption."), echo=FALSE, include=TRUE, warning=FALSE, message=FALSE}
+# List all PNG files with the pattern "CONTOUR"
+contpngfiles <- list.files(path = outDir, pattern = "CONTOUR", full.names = TRUE)
+
+# Loop through each file and create a Markdown image tag
+for (f in contpngfiles) {
+  cat(paste0("![image_label](", f, ")\n"))
+}
+
+# Clear the environment
+rm(list=ls())
+
+```
+
+
+## {-}
+
+
