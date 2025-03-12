@@ -54,7 +54,7 @@ This repository contains the folder structure and code to create a semi-automate
 6. Move the html report from `NSNSD-AcousticReports\CODE\AcousticMonitoringReports` to the season_date folder that the output is associated with and rename to include the site, season, and date.
 7. Repeat steps for all season/date combos<br>
 
-<b> IMPORTANT: <b> The Listening Center data you moved from Step 1.3 should be already have gone through QA/QC from the listening lab. During the data exploration process (Step 2.4), you may notice NAs or sound source descriptions that do not make sense. You will have to find those source codes in the listening center ouput and revise the errant codes. Do this in Step 2a.<br>
+<IMPORTANT:> The Listening Center data you moved from Step 1.3 should be already have gone through QA/QC from the listening lab. During the data exploration process (Step 2.4), you may notice NAs or sound source descriptions that do not make sense. You will have to find those source codes in the listening center ouput and revise the errant codes. Do this in Step 2a.<br>
 
 ### Step 2a: Find errant codes in the Listening Center output files
 1.) In `AcousticMonitoringReports.Rproj`, open `Step2a_ListeningCenterClean.R` <br> 
@@ -64,7 +64,7 @@ This repository contains the folder structure and code to create a semi-automate
 3.) In your `NSNSD-AcousticReports\LC_FILES\UNIT` folder you will find an .xlsx file that is a log book of all selected source descriptions, their time step, data file column, and listening center file location.<br> 
 4.) Use this to find the locations of each errant or incorrect code. Find the location in the audio record (best to use split files and listening center software). Once the audio is listened to confirm that the incorrect/errant source description is incorrect or not. If incorrect, replace it with the proper code in the original listening center ouput file (using the .xlsx file to find the location). Repeat this for all possible errant codes. If a code is throwing and NA, this indicates that the code does not exist as a source code and is likely a user input error. Find each one of these and revise the codes(using the .xlsx file to find the location). <br> 
 
-<b> IMPORTANT: <b> This step is not a trivial task. It will take time to go through all of the suspect source codes. If any codes are changed from step 2a, you will have to recreate metrics files in AMT using the original summary files and direct AMT to the cleaned up versions of the Listening Center output files. The new metrics files must replace the older files that were moved in step 1.5. After that, you must run through Step 2 again to create new figures and data tables from the new metrics files. Be sure to review the new html reports to ensure the errant codes no longer appear.
+<IMPORTANT:> This step is not a trivial task. It will take time to go through all of the suspect source codes. If any codes are changed from step 2a, you will have to recreate metrics files in AMT using the original summary files and direct AMT to the cleaned up versions of the Listening Center output files. The new metrics files must replace the older files that were moved in step 1.5. After that, you must run through Step 2 again to create new figures and data tables from the new metrics files. Be sure to review the new html reports to ensure the errant codes no longer appear.
 
 ### Step 3: Create IRMA formatted acoustic monitoring report
 1.) In `AcousticMonitoringReports.Rproj`, open `Step3_AcousticReportWordTemplate.Rmd` <br> 
