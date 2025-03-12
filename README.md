@@ -58,11 +58,11 @@ This repository contains the folder structure and code to create a semi-automate
 
 ### Step 2a: Find errant codes in the Listening Center output files
 1.) In `AcousticMonitoringReports.Rproj`, open `Step2a_ListeningCenterClean.R` <br> 
-2.) Run through the code. 
->On line 30, you will be prompted in Windows to select the listening center files in question. Most likely you will choose all files associated with your report.
->On line 53, you will be prompted to select source ID descriptions. Hold control and select each description that may be an errant code. 
-3.) In your `NSNSD-AcousticReports\LC_FILES\UNIT` folder you will find an .xlsx file that is a log book of all selected source descriptions, their time step, data file column, and listening center file location.
-4.) Use this to find the locations of each errant or incorrect code. Find the location in the audio record (best to use split files and listening center software). Once the audio is listened to confirm that the incorrect/errant source description is incorrect or not. If incorrect, replace it with the proper code in the original listening center ouput file (using the .xlsx file to find the location). Repeat this for all possible errant codes. If a code is throwing and NA, this indicates that the code does not exist as a source code and is likely a user input error. Find each one of these and revise the codes(using the .xlsx file to find the location). 
+2.) Run through the code. <br> 
+    On line 30, you will be prompted in Windows to select the listening center files in question. Most likely you will choose all files associated with your report.<br> 
+    On line 53, you will be prompted to select source ID descriptions. Hold control and select each description that may be an errant code. <br> 
+3.) In your `NSNSD-AcousticReports\LC_FILES\UNIT` folder you will find an .xlsx file that is a log book of all selected source descriptions, their time step, data file column, and listening center file location.<br> 
+4.) Use this to find the locations of each errant or incorrect code. Find the location in the audio record (best to use split files and listening center software). Once the audio is listened to confirm that the incorrect/errant source description is incorrect or not. If incorrect, replace it with the proper code in the original listening center ouput file (using the .xlsx file to find the location). Repeat this for all possible errant codes. If a code is throwing and NA, this indicates that the code does not exist as a source code and is likely a user input error. Find each one of these and revise the codes(using the .xlsx file to find the location). <br> 
 
 <b>IMPORTANT:<b> This step is not a trivial task. It will take time to go through all of the suspect source codes. If any codes are changed from step 2a, you will have to recreate metrics files in AMT using the original summary files and direct AMT to the cleaned up versions of the Listening Center output files. The new metrics files must replace the older files that were moved in step 1.5. After that, you must run through Step 2 again to create new figures and data tables from the new metrics files. Be sure to review the new html reports to ensure the errant codes no longer appear.
 
@@ -76,8 +76,8 @@ This repository contains the folder structure and code to create a semi-automate
 7.) Once the documents have been finalized and reviewed, they are ready for publication.<br> 
 
 ### Step 4: Archive final files (complete after report has been published)
-1.) In `AcousticMonitoringReports.Rproj`, open `Step4_MoveFilesToArchive.R`
-2.) Currently under construction
+1.) In `AcousticMonitoringReports.Rproj`, open `Step4_MoveFilesToArchive.R`<br> 
+2.) Currently under construction<br> 
 
 
 ### Public domain
