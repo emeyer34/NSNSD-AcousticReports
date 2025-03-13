@@ -6,7 +6,7 @@
 rm(list=ls())
 
 # Enter parameter of park unit
-pcode <- "CABR"
+pcode <- "KAWW"
 
 # Setting up the main directories
 dirs <- c("./../..//LC_FILES", "./../..//SPLAT_FILES", "./../..//METRICS", 

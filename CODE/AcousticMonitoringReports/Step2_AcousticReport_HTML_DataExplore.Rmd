@@ -62,15 +62,7 @@ params:
     input: select
     choices: [TRUE, FALSE]
   yMaxHr:
-    label: "What's the upper limit for the hourly graphs? (must be a multiple of 3)"
-    value: 70
-    input: slider
-    min: 50
-    max: 90
-    step: 3
-    sep: ""
-  yMaxHz:
-    label: "What's the upper limit for the frequency graphs? (must be a multiple of 3)"
+    label: "What's the upper limit for the hourly graphs? (must be increments of 3)"
     value: 70
     input: slider
     min: 50
@@ -78,15 +70,23 @@ params:
     step: 3
     sep: ""
   yMinHr:
-    label: "What's the lower limit for the hourly graphs? (must be a multiple of 3)"
+    label: "What's the lower limit for the hourly graphs? (must be increments of 3)"
     value: 5
     input: slider
     min: 2
     max: 15
     step: 3
     sep: ""
+  yMaxHz:
+    label: "What's the upper limit for the frequency graphs? (must be increments of 3)"
+    value: 70
+    input: slider
+    min: 50
+    max: 90
+    step: 3
+    sep: ""
   yMinHz:
-    label: "What's the lower limit for the frequency graphs? (must be a multiple of 3)"
+    label: "What's the lower limit for the frequency graphs? (must be increments of 3)"
     value: -12
     input: slider
     min: -24
