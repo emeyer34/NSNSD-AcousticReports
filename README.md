@@ -24,7 +24,7 @@ This repository contains the folder structure and code to create a semi-automate
         `Step2a_ListeningCenterClean.R`<br>
         `Step3_AcousticReportWordTemplate.Rmd`<br>
         `Step4_MoveFilesToArchive.R`<br>
-    c.	In `Step2_AcousticReport_HTML_DataExplore.Rmd`, Run the code chunk labeled “r setup” on line 102 by pressing the play button on the upper right of the code chunk. This process may take some time if the required packages have not been previously downloaded. <br>
+    c.	In `Step2_AcousticReport_HTML_DataExplore.Rmd`, Run the code chunk labeled “r setup” on line 111 by pressing the play button on the upper right of the code chunk. This process may take some time if the required packages have not been previously downloaded. <br>
 
 ### Step 1b: Pull Updates to Workstation (Repeat After Step 1a) <br>
 1.	Open a terminal and navigate to the project directory: <br>
@@ -32,8 +32,8 @@ This repository contains the folder structure and code to create a semi-automate
 2.	Pull the latest updates: <br>
 >`git pull` <br>
 3.	If "git pull" results in errors due to local modifications, you can overwrite your changes with: <br>
->`git fetch --all `
->`git reset --hard origin/master`
+>`git fetch --all `<br>
+>`git reset --hard origin/master`<br>
 
 ## Start Reporting Process
 ### Step 1: Move Files to Report Generator
