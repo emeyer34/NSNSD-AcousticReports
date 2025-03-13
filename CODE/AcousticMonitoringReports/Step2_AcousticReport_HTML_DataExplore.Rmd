@@ -13,10 +13,10 @@ documentclass: book
 params:
   alpha_code:
     label: "Enter Park Code:"
-    value: UNIT
+    value: HAVO
   season:
     label: "Enter Season:"
-    value: Summer
+    value: Spring
     input: radio
     choices: [Fall, Winter, Spring, Summer]
   year:
@@ -25,6 +25,14 @@ params:
     input: slider
     min: 2006
     max: 2050
+    step: 1
+    sep: ""
+  order:
+    label: "What order did this season and year monitoring combo occur? (must be increments of 1)"
+    value: 1
+    input: slider
+    min: 0
+    max: 10
     step: 1
     sep: ""
   lnatcalc:
@@ -140,7 +148,7 @@ npsunits <- jsonlite::fromJSON("https://irmaservices.nps.gov/Unit/v2/api/?format
 
 # Define report directory and create it
 report_dir <- file.path("./../..//REPORTS", params$alpha_code)
-dir.create(file.path(report_dir, paste0(params$season, "_", params$year)))
+dir.create(file.path(report_dir, paste0(params$order,"_",params$season, "_", params$year)))
 
 # Load list of LC and SPLAT files
 LLFiles <- list.files(path = paste0("./../..//LC_FILES/", params$alpha_code), pattern = ".*\\.txt", full.names = TRUE)
@@ -394,7 +402,7 @@ for (i in seq_along(dflist)) {
   colnames(ansnight) <- c("35 dB Night", "45 dB Night", "52 dB Night", "60 dB Night")
   
   # Combine ANS frequency day and night data
-  dflist[[i]] <- cbind("Site ID" = names[i], "Frequency (Hz)" = r"(ANS (20-1,250) $^B$)", ansday, ansnight)
+  dflist[[i]] <- cbind("Site ID" = names[i], "Frequency (Hz)" = r"(ANS (20-1,250))", ansday, ansnight)
 }
 
 # Create data frame of all ANS weighted frequency time above data
@@ -665,7 +673,7 @@ execsumtab
 
 # Write the summary table to a CSV file
 write.csv(exectab, 
-          file = paste0(report_dir, "/", params$season, "_", params$year, "/executivesumtab_", params$season, ".csv"), 
+          file = paste0(report_dir, "/", params$order,"_",params$season, "_", params$year, "/executivesumtab_", params$season, ".csv"), 
           row.names = FALSE)  # Added row.names = FALSE for cleaner output
 ```
 
@@ -691,7 +699,7 @@ ambfullsum
 
 # Write the ambient summary to a CSV file
 write.csv(amb_full_all, 
-          file = paste0(report_dir, "/", params$season, "_", params$year, "/ambfullsum_", params$season, ".csv"),
+          file = paste0(report_dir, "/", params$order,"_",params$season, "_", params$year, "/ambfullsum_", params$season, ".csv"),
           row.names = FALSE)  # Added row.names = FALSE for cleaner output
 
 ```
@@ -728,7 +736,7 @@ timeabtab
 
 # Write the time-above data to a CSV file
 write.csv(timeAbove, 
-          file = paste0(report_dir, "/", params$season, "_", params$year, "/timeabove_", params$season, ".csv"), 
+          file = paste0(report_dir, "/", params$order,"_",params$season, "_", params$year, "/timeabove_", params$season, ".csv"), 
           row.names = FALSE)  # Added row.names = FALSE for cleaner output
 
 
@@ -762,7 +770,7 @@ impactla
 
 # Write the impact and listening area data to a CSV file
 write.csv(impact_la, 
-          file = paste0(report_dir, "/", params$season, "_", params$year, "/impactlisteningarea_", params$season, ".csv"), 
+          file = paste0(report_dir, "/", params$order,"_",params$season, "_", params$year, "/impactlisteningarea_", params$season, ".csv"), 
           row.names = FALSE)  # Added row.names = FALSE for cleaner output
 ```
 
@@ -822,7 +830,7 @@ for (i in seq_along(newnames)){
 for (i in seq_along(newnames)){
   data <- subset(detailfinal, SiteID == newnames[i])
   write.csv(data, 
-            file = paste0(report_dir, "/", params$season, "_", params$year, "/ListeningCenter_", 
+            file = paste0(report_dir, "/", params$order,"_",params$season, "_", params$year, "/ListeningCenter_", 
                            params$season, "_DetailedResults_", newnames[i], ".csv"),
             row.names = FALSE)  # Added row.names = FALSE for cleaner output
 }
@@ -858,7 +866,7 @@ for (i in seq_along(newnames2)) {
 for (i in seq_along(newnames2)) {
   data <- subset(splatdetailfinal, SiteID == newnames2[i])
   write.csv(data, 
-            file = paste0(report_dir, "/", season, "_", params$year, "/SPLAT_", 
+            file = paste0(report_dir, "/", params$order,"_",season, "_", params$year, "/SPLAT_", 
                            params$season, "DetailedResults_", newnames2[i], ".csv"),
             row.names = FALSE)  # Added row.names = FALSE for cleaner output
 }
@@ -929,7 +937,7 @@ mansrc1list <- as.list(firstnoise$SourceType)
 mansrc2list <- as.list(secondnoise$SourceType)
 
 # Output directory for the plots
-outDir <- paste(report_dir, "/", params$season, "_", params$year, sep = "")
+outDir <- paste(report_dir, "/", params$order,"_",params$season, "_", params$year, sep = "")
 
 # Loop through each site to create time audibility graphs for the top one source
 #loop through each site and make time audibility graphs for top one source
@@ -1119,7 +1127,7 @@ yMinHz <- as.numeric(params$yMinHz)
 
 plotHRDBACOMB <- c(plotHRDBA, plotTRUNCDBA)
 
-outDir <- paste(report_dir,"/",params$season,"_",params$year,sep="")
+outDir <- paste(report_dir,"/",params$order,"_",params$season,"_",params$year,sep="")
 
 filesToPlot <- metricsFiles
 

@@ -3,10 +3,6 @@ output:
   word_document:
     reference_docx: template.docx
 params:
-  fullname: 
-    label: "Type the park name as you would like in the report (ex.Yosemite National Park)"
-    value: National Park
-    input: text
   alpha_code:
     label: "Enter 4 letter park code of a new park not in the NPS unit decoder in all caps (UNIT):"
     value: UNIT
@@ -40,6 +36,10 @@ lapply(packages, function(pkg) {
   }
 })
 
+# Bring in updated NPS units JSON file
+npsunits <- jsonlite::fromJSON("https://irmaservices.nps.gov/Unit/v2/api/?format=json")
+
+
 ```
 
 
@@ -50,8 +50,15 @@ lapply(packages, function(pkg) {
 ```{r params store, include=FALSE}
 
 # Extract parameters from input
-park <- params$fullname
+
 pcode <- params$alpha_code
+
+report_units <- npsunits %>%
+  filter(UnitCode == pcode)
+
+park <- report_units$FullName
+state <- report_units$StateCodes
+
 
 # Define the report directory using the park code
 report_dir <- paste0("./../..//REPORTS/", pcode)
@@ -79,7 +86,8 @@ datayear1 <- min(years_unique)
 datayear2 <- max(years_unique)
 
 # Extract seasons from directory names
-seasons <- as.list(str_match(dirs, "REPORTS/..../\\s*(.*?)\\s*_")[, 2])
+seasons <- as.list(str_match(dirs, "REPORTS/..../\\d+_(.*?)_")[, 2])
+
 
 # Count seasons and identify unique seasons
 season_count <- length(unlist(seasons))
@@ -106,6 +114,69 @@ sitenum <- length(sitenames)
 # Convert the number of sites to words
 sitenumword <- as.english(sitenum)
 
+# Obtain Table number lists
+
+# Time above tables executive summary
+timeabovelist <- list.files(path = dirs, pattern = "timeabove", full.names = TRUE)
+ta_tab_start_1 <- 2
+ta_tab_end_1 <- length(timeabovelist) - 1 + ta_tab_start_1
+ta_tab_list_1 <- as.list(seq(from = ta_tab_start_1, to = ta_tab_end_1, by = 1))
+
+# Executive summary table
+exsumlist <- list.files(path = dirs, pattern = "executivesumtab", full.names = TRUE)
+ex_sum_tab_start <- ta_tab_end_1 + 1
+ex_sum_tab_end <- ex_sum_tab_start + length(exsumlist) - 1
+ex_sum_tab_list <- as.list(seq(from = ex_sum_tab_start, to = ex_sum_tab_end, by = 1))
+
+# Site metadata table
+site_meta <- ex_sum_tab_end + 1
+
+# Time above tables main report
+ta_tab_start_2 <- site_meta + 1
+ta_tab_end_2 <- length(timeabovelist) - 1 + ta_tab_start_2
+ta_tab_list_2 <- as.list(seq(from = ta_tab_start_2, to = ta_tab_end_2, by = 1))
+
+# Percentile levels
+ambfullsumlist <- list.files(path = dirs, pattern = "ambfullsum", full.names = TRUE)
+amb_sum_tab_start <- ta_tab_end_2 + 1
+amb_sum_tab_end <- amb_sum_tab_start + length(ambfullsumlist) - 1
+amb_sum_tab_list <- as.list(seq(from = amb_sum_tab_start, to = amb_sum_tab_end, by = 1))
+
+
+# Set initial figure numbers
+map <- 1
+listener <- 2
+
+# Obtain frequency content figures
+freqcontlist <- list.files(path = dirs, pattern = "SPLvFREQ", full.names = TRUE)
+# Define starting and ending indices for frequency content figures
+freqcont_fig_start <- listener + 1
+frecont_fig_end <- length(freqcontlist) - 1 + freqcont_fig_start
+frecont_fig_list <- as.list(seq(from = freqcont_fig_start, to = frecont_fig_end, by = 1))
+
+# Obtain percentile sound levels figures
+hourlycontlist <- list.files(path = dirs, pattern = "DBAvHR", full.names = TRUE)
+# Define starting and ending indices for percentile sound level figures
+hourly_fig_start <- frecont_fig_end + 1
+hourly_fig_end <- length(hourlycontlist) - 1 + hourly_fig_start
+hourly_fig_list <- as.list(seq(from = hourly_fig_start, to = hourly_fig_end, by = 1))
+
+# Obtain percent audibility figures
+pacontlist <- list.files(path = dirs, pattern = "top2", full.names = TRUE)
+# Define starting and ending indices for percent audibility figures
+pa_fig_start <- hourly_fig_end + 1
+pa_fig_end <- length(pacontlist) - 1 + pa_fig_start
+pa_fig_list <- as.list(seq(from = pa_fig_start, to = pa_fig_end, by = 1))
+
+# Define site pictures indices
+site_fig_start <- pa_fig_end + 1
+site_fig_end <- sitenum - 1 + site_fig_start
+site_fig_list <- as.list(seq(from = site_fig_start, to = site_fig_end, by = 1))
+
+# Define geospatial model figures indices
+gsm_exist <- site_fig_end + 1
+gsm_natural <- gsm_exist + 1
+gsm_impact <- gsm_exist + 1
 ```
 
 
@@ -134,7 +205,7 @@ NPS/NATURAL SOUNDS PROGRAM
 ::: 
 
 :::{custom-style="sr Alternate text"}
-Standard monitoring equipment utilized for acoustic monitoring in `r (park)`. Included within the image are two tripods holding a microphone and weather monitoring instrumentation. Near the two tripods is a solar panel and boxes that hold batteries, a data logger, and an acoustic recording unit. **~The image is within and arid and sparsely vegetated volcanic landscape.*
+Standard monitoring equipment utilized for acoustic monitoring in `r (park)`. Included within the image are two tripods holding a microphone and weather monitoring instrumentation. Near the two tripods is a solar panel and boxes that hold batteries, a data logger, and an acoustic recording unit. *~The image is within and arid and sparsely vegetated volcanic landscape.*
 :::
 
 \newpage
@@ -253,7 +324,7 @@ tab1 <- data.table(
 # Create a flextable from the data table and format it
 flextable(tab1) %>% 
   align(j = c(1:2), align = "left", part = "all") %>%  # Align the first two columns to the left
-  align(j = c(3), align = "center", part = "all") %>%  # Center align the sound level column
+  align(j = c(3), align = "center", part = "all") %>%  # left align the sound level column
   fontsize(size = 9, part = "header") %>%              # Set font size for header
   bold(part = "header") %>%                             # Make header bold
   fontsize(size = 9, part = "body") %>%                 # Set font size for body
@@ -304,7 +375,7 @@ for (i in 1:length(datafolders)) {
   # Create a flextable from the data and format it
   tb <- flextable(data) %>% 
     align(j = 1:2, align = "left", part = "all") %>%         # Align the first two columns to the left
-    align(j = c(3:10), align = "center", part = "all") %>%   # Center align the sound level columns
+    align(j = c(3:10), align = "left", part = "all") %>%   # left align the sound level columns
     fontsize(size = 9, part = "header") %>%                  # Set font size for header
     bold(part = "header") %>%                                 # Make header bold
     fontsize(size = 9, part = "body") %>%                     # Set font size for body
@@ -327,7 +398,7 @@ for (i in 1:length(datafolders)) {
   # Set a caption for the table with dynamic content
   tb <- set_caption(tb, 
     as_paragraph(as_chunk(paste(
-      "Table ~X. Percent time above metrics for acoustic records collected in ", 
+      "Table ",ta_tab_list_1[i],". Percent time above metrics for acoustic records collected in ", 
       park, " (", pcode, ") in ", seasons[i], ", ", years[i], 
       ". Sound level functional values are displayed in decibels (dB LAeq, 1s re 20 µPa). The percent of time ANS-weighted sound levels (20 – 1,250 Hz) are above functional values.", 
       sep = "")
@@ -371,7 +442,7 @@ for (i in 1:length(datafolders)) {
   # Create a flextable from the data and format it
   tb <- flextable(data) %>% 
     align(j = 1, align = "left", part = "all") %>%       # Align the first column (Site Name) to the left
-    align(j = c(2:9), align = "center", part = "all") %>% # Center align all remaining columns
+    align(j = c(2:9), align = "left", part = "all") %>% # left align all remaining columns
     fontsize(size = 9, part = "header") %>%              # Set font size for header
     bold(part = "header") %>%                             # Make header bold
     fontsize(size = 9, part = "body") %>%                 # Set font size for body
@@ -398,7 +469,7 @@ for (i in 1:length(datafolders)) {
   # Set a caption for the table with dynamic content
   tb <- set_caption(tb, 
     caption = as_paragraph(
-      paste("Table ~X. Summary sound levels at ", park, " (", pcode, ") in ", seasons[i], ", ", years[i], ". Included for each site are 90", sep=""),
+      paste("Table ",ex_sum_tab_list[i],". Summary sound levels at ", park, " (", pcode, ") in ", seasons[i], ", ", years[i], ". Included for each site are 90", sep=""),
       as_sup("th"), as_chunk(" percentile (L"), as_sub("A10"), as_chunk("), existing (L"), as_sub("A50"), 
       as_chunk("), and 10"), as_sup("th"), as_chunk(", percentile (L"), as_sub("A90"), 
       as_chunk(") ambient sound levels (dB re 20 µPa, A-weighted broadband, 12.5 Hz—20 kHz) during the day (0700-1900) and night (1900-0700). L"), 
@@ -461,10 +532,13 @@ Study Area
 This report covers results from an acoustic inventory conducted from `r (datayear1)` **to `r (datayear2)`** at `r (pcode)` (**~Table X)**. `r (sitenumword)` sites were selected to represent a range of visitation, noise source, and habitat type. **~One site was deployed during two sampling visits (`r (pcode)`00X). Two sites were deployed only during the first visit (`r (pcode)`00X, `r (pcode)`00X), and three sites were deployed only during the second visit (`r (pcode)`00X – 00X). Four of the sites were deployed in the northern half of the unit, which also receives the most visitation. Two of the sites were deployed in the southern portion of the unit. The set of acoustic inventory sites spanned 130 km. (Figure 1).**
 :::
 :::{custom-style="sr Table caption"}
-**~Table X**. Metadata for acoustical monitoring sites at `r (park)`, from `r (datayear1)` **to `r (datayear2)`**. 
+Table `r (site_meta)`. Metadata for acoustical monitoring sites at `r (park)`, from `r (datayear1)` **to `r (datayear2)`**. 
 :::
 
-```{r siteinfo, echo=FALSE, ft.align="center",out.width = '70%'}
+```{r siteinfo, echo=FALSE, ft.align="center", out.width = '70%'}
+library(readxl)
+library(flextable)
+
 # Load site metadata from the specified Excel file
 sitemeta <- read_excel(paste0("./../..//MAPS_IMAGES/", pcode, "/SiteMeta.xlsx"))
 
@@ -472,18 +546,27 @@ sitemeta <- read_excel(paste0("./../..//MAPS_IMAGES/", pcode, "/SiteMeta.xlsx"))
 mat <- data.frame(sitemeta, check.names = FALSE)
 
 # Create a flextable from the data frame and format it
-flextable(mat) %>% 
+ft <- flextable(mat) %>% 
   align(j = 1:2, align = "left", part = "all") %>%      # Align first two columns to the left
-  align(j = 3:8, align = "center", part = "all") %>%    # Center align columns 3 to 8
+  align(j = 3:8, align = "left", part = "all") %>%    # left align columns 3 to 8
   fontsize(size = 9, part = "header") %>%               # Set font size for header
   bold(part = "header") %>%                              # Make header bold
   # Uncomment to apply font size to body (if needed)
-  # fontsize(size = 9, part = "body") %>% 
+  fontsize(size = 9, part = "body") %>% 
   # Uncomment to apply padding to all cells (if needed)
-  # padding(padding = 0.5, part = "all") %>%              
+  padding(padding = 0.5, part = "all") %>%              
   autofit() %>%                                         # Autofit the table size to content
   border_outer() %>%                                    # Add outer border
-  border_inner()                                       # Add inner borders
+  border_inner()                                        # Add inner borders
+
+# Set the width of the flextable to 70% of the page width
+ft <- set_table_properties(ft, width = 0.7, layout = "autofit")
+
+# Print the flextable
+ft
+
+
+
 ```
 
 
@@ -496,16 +579,16 @@ include_graphics(paste(park.image.folder, "park_geographic_location.png", sep = 
 ```
 
 :::{custom-style="sr Figure caption"}
-**~Figure X.** Study sites in `r (park)`, **~STATE**, USA.
+Figure `r (map)`. Study sites in `r (park)`, `r(state)`, USA.
 :::
-
-:::{custom-style="sr Alternate text"}
-**~Figure X.** Study sites in `r (park)`, **~STATE, USA. This map shows the boundary of the park, a road that borders the north-northeast boundary, and a railroad at the southern tip of the boundary. Within the park boundary, the `r (sitenum)` study sites are labeled at their location and a grey polygon displays the Wilderness boundary.** 
-:::
-
 :::{custom-style="sr Image credit"}
 ORIGINALLY PRODUCED BY NPS/NATURAL SOUNDS PROGRAM
 :::
+:::{custom-style="sr Alternate text"}
+Figure `r (map)`. Study sites in `r (park)`, `r(state)`, USA. **This map shows the boundary of the park, a road that borders the north-northeast boundary, and a railroad at the southern tip of the boundary. Within the park boundary, the `r (sitenum)` study sites are labeled at their location and a grey polygon displays the Wilderness boundary.** 
+:::
+
+
 
 <br>
 
@@ -610,16 +693,16 @@ include_graphics(paste(park.image.folder,"listenerimage.png", sep=""))
 ```
 
 :::{custom-style="sr Figure caption"}
-Figure 2. A Colorado State University student identifies sound sources using Acoustic Monitoring Toolbox (NPS) software. 
+Figure `r (listener)`. A Colorado State University student identifies sound sources using Acoustic Monitoring Toolbox (NPS) software. 
 :::
-
-:::{custom-style="sr Alternate text"}
-Figure 2. A Colorado State University student identifies sound sources using Acoustic Monitoring Toolbox (NPS) software. The student is wearing headphones and visually analyzing spectrograms on two computer screens. 
-:::
-
 :::{custom-style="sr Image credit"}
 ORIGINALLY PRODUCED BY NPS/NATURAL SOUNDS PROGRAM
 :::
+
+:::{custom-style="sr Alternate text"}
+Figure `r (listener)`. A Colorado State University student identifies sound sources using Acoustic Monitoring Toolbox (NPS) software. The student is wearing headphones and visually analyzing spectrograms on two computer screens. 
+:::
+
 
 :::{custom-style="sr Heading 2"}
 Sound Pressure Level Annotation Tool **(DELETE SECTION OF NO LISTENING CENTER ANALYSIS COMPLETED)**
@@ -655,44 +738,52 @@ Examining the sound energy in each one-third octave band (combined with digital 
 # List all files in the report directory matching the pattern 'SPLvFREQ'
 freqpngfiles <- list.files(path = report_dir, pattern = "SPLvFREQ", full.names = TRUE, recursive = TRUE)
 
-# Extract the last 50 characters of the filenames for reference (could be optional)
-imagename <- str_sub(freqpngfiles, -50)
+# Extract sites, seasons, and years from frequency PNG files
 
-# Loop through each frequency PNG file
-for (f in freqpngfiles) {
+# Get the base names of the frequency PNG files (removing directory paths)
+imagename <- basename(freqpngfiles)
+
+# Extract site names by capturing everything before the first underscore
+figsites <- sub("_.*", "", imagename)
+
+# Extract seasons by capturing the part between the first and second underscore
+figseasons <- sub("^[^_]*_([^_]*)_.*$", "\\1", imagename)
+
+# Extract years by capturing the four-digit number expected at the specific position
+figyears<- sub(".*_(\\d{4})/.*$", "\\1", freqpngfiles)
+
+# Print results (for verification)
+#print(figsites)   # Output extracted site names
+#print(figseasons) # Output extracted seasons
+#print(figyears)   # Output extracted years
+
+# Predefine the figure count for the appropriate range
+total_figures <- length(freqpngfiles)
+
+# Loop through each frequency PNG file with an index
+for (i in 1:total_figures) {
+  f <- freqpngfiles[i]  # Access the current file using the index
+
   # Print the Markdown syntax to include the image
-  cat(paste0("![image_label](", f, ")\n"))
+  cat(paste0("![image_label](", f, ")\n\n"))  # Adding two line breaks
+  cat(paste("**FORMAT AS sr Figure caption in STYLES (THEN DELETE THIS )**\n"))
   
-  # Add spacing for clarity in the output
-  cat("  \n")
-  cat("  \n")
-  cat("  \n")
-  cat("  \n")
+  # Figure caption with placeholders
+  cat(paste("Figure ", frecont_fig_list[i], ". Day and night percentile sound pressure levels for 33 one-third octave bands at ", figsites[i], " in ",figseasons[i], ", ",figyears[i], ". For each bar, the bold color indicates the range of existing (L~50~; upper) and natural (L~nat~; lower) sound pressure levels.\n", sep = ""))
+  cat("\n") # Additional line breaks for clarity
   
-  # Add a placeholder for the figure caption
-  cat(paste("**FORMAT BELOW AS sr Figure caption in STYLES (THEN DELETE THIS LINE)**", sep=""))
-  cat("  \n")
-  cat(paste("~Figure X. Day and night percentile sound pressure levels for 33 one-third octave bandsat ", pcode,"00X from SEASON, YEAR.** For each bar, the bold color indicates the range of existing (L~50~; upper) and natural (L~nat~; lower) sound pressure levels. Sound levels depicted are not A-weighted.", sep="")) 
-  cat("  \n")
-  cat("  \n")
+  # Image credit placeholder
+  cat(paste("**FORMAT AS {custom-style=sr Image credit} in STYLES (THEN DELETE THIS )**\n"))
+  cat(paste("ORIGINALLY PRODUCED BY NPS/NATURAL SOUNDS PROGRAM\n\n"))
   
-  # Add a placeholder for alternative text
-  cat(paste("**FORMAT BELOW AS sr Alternative text in STYLES (THEN DELETE THIS LINE)**", sep=""))
-  cat("  \n")
-  cat(paste("~Figure x. Day and night percentile sound pressure levels for 33 one-third octave bands at ", pcode,"00X from SEASON, YEAR.** This graph displays sound pressure level in decibels on the y-axis and frequency in hertz on the x-axis. A greyed-out portion of the graph depicts the threshold of human hearing. Octave bands where transportation and songbirds are audible are noted. For each bar that exists for each octave band, measured sound level percentiles are displayed for daytime in yellow-orange and nighttime in pink-purple. The upper and lower bounds of each bar display the tenth and ninetieth percentiles. Within that bar, a bold section (orange and purple) displays the median and natural sound levels. **~This bold color indicates the range of existing and natural sound pressure levels and indicates the measured noise impact. This graph depicts a signal for transportation during the day and a weak signal for dusk and dawn bird chorus.**", sep=""))
   cat("  \n")
   cat("  \n")
-  cat(paste("**FORMAT BELOW AS {custom-style=sr Image credit}in STYLES (THEN DELETE THIS LINE)**", sep=""))
-  cat("  \n")
-  cat(paste("ORIGINALLY PRODUCED BY NPS/NATURAL SOUNDS PROGRAM", sep=""))
-
-  
-  # Add a placeholder for alternative text  
-  
-  
+  cat(paste("**FORMAT AS sr Alternative text in STYLES (THEN DELETE THIS )**\n"))
+  cat(paste("Figure ", frecont_fig_list[i], ". Day and night percentile sound pressure levels for 33 one-third octave bands at ", 
+            figsites[i], " in ",figseasons[i], ", ",figyears[i], ". This graph displays sound pressure level in decibels on the y-axis and frequency in hertz on the x-axis. A greyed-out portion of the graph depicts the threshold of human hearing. Octave bands where transportation and songbirds are audible are noted. For each bar that exists for each octave band, measured sound level percentiles are displayed for daytime in yellow-orange and nighttime in pink-purple. The upper and lower bounds of each bar display the tenth and ninetieth percentiles. Within that bar, a bold section (orange and purple) displays the median and natural sound levels. **~This bold color indicates the range of existing and natural sound pressure levels and indicates the measured noise impact. This graph depicts a signal for transportation during the day and a weak signal for dusk and dawn bird chorus.**\n", sep = ""))
+  cat("\n") # Additional line breaks for clarity
 }
 ```
-
 
 
 :::{custom-style="sr Heading 2"}
@@ -724,7 +815,7 @@ for (i in 1:length(datafolders)) {
   # Create a flextable from the data frame and format it
   tb <- flextable(data) %>% 
     align(j = 1:2, align = "left", part = "all") %>%       # Align the first two columns to the left
-    align(j = 3:10, align = "center", part = "all") %>%    # Center align the sound level columns
+    align(j = 3:10, align = "left", part = "all") %>%    # left align the sound level columns
     fontsize(size = 9, part = "header") %>%                # Set font size for header
     bold(part = "header") %>%                               # Make header bold
     fontsize(size = 9, part = "body") %>%                   # Set font size for body
@@ -747,7 +838,7 @@ for (i in 1:length(datafolders)) {
   # Set a caption for the table with dynamic content
   tb <- set_caption(tb, 
     as_paragraph(as_chunk(paste(
-      "**~Table X.** Percent time above metrics for acoustic records collected in ", 
+      "Table ", ta_tab_list_2[i], ". Percent time above metrics for acoustic records collected in ", 
       park, " (", pcode, ") in ", seasons[i], ", ", years[i], 
       ". Sound level functional values are displayed in decibels (dB LAeq, 1s re 20 µPa). The percent of time ANS-weighted sound levels (20 – 1,250 Hz) are above functional values.", 
       sep = "")
@@ -773,7 +864,8 @@ To understand the range of acoustic conditions at the park, percentile sound lev
 **REMEMBER TO FORMAT CAPTION TO "sr TABLE caption" IN STYLES (THEN DELETE THIS)**
 :::
 
-```{r percentiles, echo=FALSE, results='asis',ft.align="center",out.width = '100%'}
+```{r percentiles, echo=FALSE, results='asis', ft.align = "center", out.width = '100%'}
+library(flextable)
 
 # Loop through each data folder to read ambient full summary data and create flextables
 for (i in 1:length(datafolders)) {
@@ -792,7 +884,7 @@ for (i in 1:length(datafolders)) {
   # Create a flextable from the data frame and format it
   tb <- flextable(data) %>% 
     align(j = 1, align = "left", part = "all") %>%       # Align first column (Site Name) to the left
-    align(j = c(2:6), align = "center", part = "all") %>% # Center align the remaining columns
+    align(j = c(2:6), align = "left", part = "all") %>% # left align the remaining columns
     fontsize(size = 9, part = "header") %>%              # Set font size for header
     bold(part = "header") %>%                             # Make header bold
     fontsize(size = 9, part = "body") %>%                 # Set font size for body
@@ -811,26 +903,38 @@ for (i in 1:length(datafolders)) {
   tb <- compose(tb, i = 1, j = 6, part = "header",
                 value = as_paragraph("L", as_sub("A90")))
 
-  # Set a caption for the table with dynamic content
+  # Set a caption for the table with dynamic content and line breaks
   tb <- set_caption(tb, 
-    as_paragraph(as_chunk(paste(
-      "**~Table X.** Summary of summer sound levels at ", 
-      park, " (", pcode, ") in ", seasons[i], ", ", years[i], 
-      as_chunk("Included for each site, 90,"), as_sup("th"), 
-      as_chunk(" percentile (L"), as_sub("A10"), as_chunk("), existing (L"), 
-      as_sub("A50"), as_chunk("), natural (L"), as_sub("Anat"), 
-      as_chunk(") and 10"), as_sup("th"), 
-      as_chunk(" percentile (L"), as_sub("A90"), as_chunk(") ambient sound levels (dB re 20 µPa, A-weighted broadband, 12.5 Hz—20 kHz) during the day (0700-1900) and night (1900-0700).")
-    ))),
+    as_paragraph(
+      as_chunk(paste("Table ", amb_sum_tab_list[i], ". Summary of summer sound levels at ", 
+                     park, " (", pcode, ") in ", seasons[i], ", ", years[i], sep = ""),
+                style = "sr Table caption"),
+      as_chunk("Included for each site, 90 ", style = "sr Table caption"),
+      as_sup("th"), 
+      as_chunk(" percentile (L", style = "sr Table caption"), 
+      as_sub("A10"), 
+      as_chunk("), existing (L", style = "sr Table caption"),
+      as_sub("A50"), 
+      as_chunk("), natural (L", style = "sr Table caption"),
+      as_sub("Anat"), 
+      as_chunk(") and 10 ", style = "sr Table caption"),
+      as_sup("th"), 
+      as_chunk(" percentile (L", style = "sr Table caption"), 
+      as_sub("A90"), 
+      as_chunk(") ambient sound levels (dB re 20 µPa, A-weighted broadband, 12.5 Hz—20 kHz) during the day (0700-1900) and night (1900-0700).", style = "sr Table caption")
+    ),
     align_with_table = FALSE, 
     word_stylename = "sr Table caption"
   )
-  
+  cat("\n") # Additional line breaks for clarity
+  cat("\n") # Additional line breaks for clarity
   # Output the flextable in RMarkdown format
   flextable_to_rmd(tb)
+  
+  cat("\n") # Additional line breaks for clarity
 }
-
 ```
+
 
 <br>
 
@@ -838,34 +942,52 @@ for (i in 1:length(datafolders)) {
 # List all files in the report directory matching the pattern 'DBAvHR'
 hourpngfiles <- list.files(path = report_dir, pattern = "DBAvHR", full.names = TRUE, recursive = TRUE)
 
-# Extract and create a list of the last 50 characters of the filenames (if needed for reference)
-imagename <- as.list(str_sub(hourpngfiles, -50))
+# Extract sites, seasons, and years from frequency PNG files
 
-# Loop through each hourly sound level image
-for (f in hourpngfiles) {
+# Get the base names of the frequency PNG files (removing directory paths)
+imagename <- basename(hourpngfiles)
+
+# Extract site names by capturing everything before the first underscore
+figsites <- sub("_.*", "", imagename)
+
+# Extract seasons by capturing the part between the first and second underscore
+figseasons <- sub("^[^_]*_([^_]*)_.*$", "\\1", imagename)
+
+# Extract years by capturing the four-digit number expected at the specific position
+figyears<- sub(".*_(\\d{4})/.*$", "\\1", hourpngfiles)
+
+# Print results (for verification)
+#print(figsites)   # Output extracted site names
+#print(figseasons) # Output extracted seasons
+#print(figyears)   # Output extracted years
+
+
+
+# Loop through each hourly sound level image with an index
+for (i in seq_along(hourpngfiles)) {
+  f <- hourpngfiles[i]  # Access the current file using the index
+
   # Print the Markdown syntax to include the image
   cat(paste0("![image_label](", f, ")\n"))
   
-  # Add spacing for clarity in the output
+  # Add spacing for clarity
   cat("  \n")
   cat("  \n") 
   
   # Add a placeholder for the figure caption
-  cat(paste("**FORMAT BELOW AS sr Figure caption in STYLES (THEN DELETE THIS LINE)**", sep=""))
+  cat(paste("**FORMAT  AS sr Figure caption in STYLES (THEN DELETE THIS )**\n", sep=""))
+  cat(paste("Figure ", hourly_fig_list[i], ". Median percentile sound levels (L~Aeq,~~1s~), in dB re 20 µPa, at ", figsites[i], " in ",figseasons[i], ", ",figyears[i], ".", sep="")) 
+  cat("  \n")
+  cat("  \n")
+  cat(paste("**FORMAT  AS {custom-style=sr Image credit} in STYLES (THEN DELETE THIS )**\n", sep=""))
+    cat(paste("ORIGINALLY PRODUCED BY NPS/NATURAL SOUNDS PROGRAM\n"))
+  cat("  \n")
+  cat("  \n")
+  cat(paste("**FORMAT  AS sr Alternative text in STYLES (THEN DELETE THIS )**\n", sep=""))
   cat("  \n") 
-  cat(paste("~Figure X. Median percentile sound levels (L~Aeq,~~1s~), in dB re 20 µPa, at ", pcode,"00X from SEASON, YEAR.**", sep="")) 
+  cat(paste("Figure ", hourly_fig_list[i], ". Median percentile sound levels (LAeq, 1s), in dB re 20 µPa, at ", figsites[i], " in ",figseasons[i], ", ",figyears[i], ". A box and whisker plot depicting percentile sound levels on the y-axis and time of day by the hour on the x-axis. For each hourly box plot, the upper and lower whiskers display the tenth and ninetieth percentiles. The upper bound of the boxplot indicates the median sound level and the lower bound of the boxplot indicates the natural sound level. **This graph shows the largest impacts to the natural ambient sound level occur during the daytime. **Overall, median percentile sound levels (L~Aeq,~~1s~) ranged from 14.4 dB to 27.4 dB. These results summarize a total of 379 hours during the measurement period.**\n", sep=""))
   cat("  \n")
   cat("  \n")
-  
-  # Add a placeholder for alternative text
-  cat(paste("**FORMAT BELOW AS sr Alternative text in STYLES (THEN DELETE THIS LINE)**", sep=""))
-  cat("  \n") 
-  cat(paste("**~Figure x.** Median percentile sound levels (LAeq, 1s), in dB re 20 µPa, at ", pcode,"00X from SEASON, YEAR.** A box and whisker plot depicting percentile sound levels on the y-axis and time of day by the hour on the x-axis. For each hourly box plot, the upper and lower whiskers display the tenth and ninetieth percentiles. The upper bound of the boxplot indicates the median sound level and the lower bound of the boxplot indicates the natural sound level. **This graph shows the largest impacts to the natural ambient sound level occur during the daytime. Overall, median percentile sound levels (L~Aeq,~~1s~) ranged from 14.4 dB to 27.4 dB. These results summarize a total of 379 hours during the measurement period.**", sep=""))
-  cat("  \n")
-  cat("  \n")
-  cat(paste("**FORMAT BELOW AS {custom-style=sr Image credit}in STYLES (THEN DELETE THIS LINE)**", sep=""))
-  cat("  \n")
-  cat(paste("ORIGINALLY PRODUCED BY NPS/NATURAL SOUNDS PROGRAM", sep=""))
 }
 
 ```
@@ -883,33 +1005,58 @@ Through off-site listening analysis, event duration for all audible sounds is ca
 
 ```{r top2, results='asis',fig.cap=paste("Your caption."), echo=FALSE, include=TRUE, warning=FALSE, message=FALSE}
 # List all files in the report directory matching the pattern 'top2'
-hourpngfiles <- list.files(path = report_dir, pattern = "top2", full.names = TRUE, recursive = TRUE)
+papngfiles <- list.files(path = report_dir, pattern = "top2", full.names = TRUE, recursive = TRUE)
 
-# Loop through each hourly noise source image
-for (f in hourpngfiles) {
+# Extract sites, seasons, and years from frequency PNG files
+
+# Get the base names of the frequency PNG files (removing directory paths)
+imagename <- basename(papngfiles)
+
+# Extract site names by capturing everything before the first underscore
+figsites <- sub("_.*", "", imagename)
+
+# Extract seasons by capturing the part between the first and second underscore
+figseasons <- sub("^[^_]*_([^_]*)_.*$", "\\1", imagename)
+
+# Extract years by capturing the four-digit number expected at the specific position
+figyears<- sub(".*_(\\d{4})/.*$", "\\1", papngfiles)
+
+# Print results (for verification)
+#print(figsites)   # Output extracted site names
+#print(figseasons) # Output extracted seasons
+#print(figyears)   # Output extracted years
+
+
+
+
+# Assuming pa_fig_list is defined and has the same length as papngfiles
+# Loop through each noise source image with an index
+for (i in seq_along(papngfiles)) {
+  f <- papngfiles[i]  # Access the current file using the index
+
   # Print the Markdown syntax to include the image
   cat(paste0("![image_label](", f, ")\n"))
- 
+  
   # Add spacing for clarity in the output
   cat("  \n")
   cat("  \n") 
   
   # Add a placeholder for the figure caption
-  cat(paste("**FORMAT BELOW AS sr Figure caption in STYLES (THEN DELETE THIS LINE)**", sep=""))
+  cat(paste("**FORMAT AS sr Figure caption in STYLES (THEN DELETE THIS)**\n", sep=""))
   cat("  \n") 
-  cat(paste("Figure X. Hourly time audible for the top noise sources and all noise sources at ", pcode,"00X from **~Month – Month YYYY.**", sep="")) 
+  cat(paste("Figure ", pa_fig_list[i], ". Hourly time audible for the top noise sources and all noise sources at ", figsites[i], " in ",figseasons[i], ", ",figyears[i], ".", sep="")) 
   cat("  \n")
   cat("  \n")
+  cat(paste("**FORMAT AS {custom-style=sr Image credit} in STYLES (THEN DELETE THIS)**\n", sep=""))
+  cat(paste("ORIGINALLY PRODUCED BY NPS/NATURAL SOUNDS PROGRAM\n", sep=""))
   
-  # Add a placeholder for alternative text
-  cat(paste("**FORMAT BELOW AS sr Alternative text in STYLES (THEN DELETE THIS LINE)**", sep=""))
+  cat("  \n")
+  cat("  \n")
+  cat(paste("**FORMAT AS sr Alternative text in STYLES (THEN DELETE THIS)**\n", sep=""))
   cat("  \n") 
-  cat(paste("Figure X. Hourly time audible for the top noise sources and all noise sources at ", pcode,"00X from Month – Month YYYY. A bar chart depicts the percent time audible on the y-axis and time of day by the hour on the x-axis. A grey bar depicts the percent of time within an hour where noise is audible. Within that grey bar, the top noise sources are displayed in separate adjacent purple and salmon bars. Two noise sources are displayed unless only one prominent source is present at a site. **This graph shows noise is audible greater than 99% of the time at every hour of the day. The top noise source is a foghorn that was coded as ‘Non-natural Other’. The other primary source of noise was from aircraft, which primarily occurred from the hours of 0600 to 2300.**", sep=""))
+  cat(paste("Figure ", pa_fig_list[i], ". Hourly time audible for the top noise sources and all noise sources at ", figsites[i], " in ",figseasons[i], ", ",figyears[i], ". A bar chart depicts the percent time audible on the y-axis and time of day by the hour on the x-axis. A grey bar depicts the percent of time within an hour where noise is audible. Within that grey bar, the top noise sources are displayed in separate adjacent purple and salmon bars. Two noise sources are displayed unless only one prominent source is present at a site. **This graph shows noise is audible greater than 99% of the time at every hour of the day. The top noise source is a foghorn that was coded as ‘Non-natural Other’. The other primary source of noise was from aircraft, which primarily occurred from the hours of 0600 to 2300.**\n", sep=""))
   cat("  \n")
   cat("  \n")
-  cat(paste("**FORMAT BELOW AS {custom-style=sr Image credit}in STYLES (THEN DELETE THIS LINE)**", sep=""))
-  cat("  \n")
-  cat(paste("ORIGINALLY PRODUCED BY NPS/NATURAL SOUNDS PROGRAM", sep=""))
 }
 
 ```
@@ -1015,31 +1162,35 @@ Appendix A: Site Photos
 
 ```{r sitephotos, results='asis',fig.cap=paste("Your caption."), echo=FALSE, include=TRUE, warning=FALSE, message=FALSE}
 
+fullnames<-as.list(mat$`Site Name`)
+
+
 # Loop through each site name to create placeholders for site photos
 for (i in 1:length(sitenames)) {
     # Add spacing for clarity in the output
     cat("  \n")
     
     # Add a placeholder for the figure caption
-    cat(paste("**Place image here, then FORMAT BELOW AS sr Figure caption in STYLES (THEN DELETE THIS LINE)**", sep=""))
+    cat(paste("**Place image here, then FORMAT AS sr Figure caption in STYLES (THEN DELETE THIS)**", sep=""))
     cat("  \n") 
     
     # Specify the figure title with the site name
-    cat(paste("Figure X. ", sitenames[i], " **Enter site name here**", sep="")) 
+    cat(paste("Figure ",site_fig_list[i],". ", sitenames[i], ", ",fullnames[i],".", sep="")) 
     cat("  \n")
     cat("  \n")
-
-    # Add a placeholder for alternative text
+    cat(paste("**FORMAT BELOW AS {custom-style=sr Image credit}in STYLES (THEN DELETE THIS LINE)**", sep=""))
+    cat("  \n")
+    cat(paste("ORIGINALLY PRODUCED BY NPS/NATURAL SOUNDS PROGRAM", sep=""))
+    cat("  \n")
+    cat("  \n")
     cat(paste("**FORMAT BELOW AS sr Alternative text in STYLES (THEN DELETE THIS LINE)**", sep=""))
     cat("  \n") 
     
     # Specify the figure description with the site-specific details
-    cat(paste("Figure X. ", sitenames[i], " **Enter site name here**. Standard monitoring equipment utilized for acoustic monitoring in ", park, ". Included within the image are two tripods holding a microphone and weather monitoring instrumentation. Near the two tripods is a solar panel and boxes that hold batteries, a data logger, and an acoustic recording unit. The image is within **enter habitat here**.", sep=""))
+    cat(paste("Figure ",site_fig_list[i],". ", sitenames[i], ", ",fullnames[i],". Standard monitoring equipment utilized for acoustic monitoring in ", park, ". Included within the image are two tripods holding a microphone and weather monitoring instrumentation. Near the two tripods is a solar panel and boxes that hold batteries, a data logger, and an acoustic recording unit. The image is within **enter habitat here**.", sep=""))
   cat("  \n")
   cat("  \n")
-  cat(paste("**FORMAT BELOW AS {custom-style=sr Image credit}in STYLES (THEN DELETE THIS LINE)**", sep=""))
-  cat("  \n")
-  cat(paste("ORIGINALLY PRODUCED BY NPS/NATURAL SOUNDS PROGRAM", sep=""))
+ 
 }
 
 ```
@@ -1054,7 +1205,7 @@ NSNSD developed a model (Mennitt et al. 2014, NPS 2021) that predicts the median
 
 Within `r (pcode)`, the model predicted an existing L~50~ of **~32.8 dBA** (Figure 5) and a natural L~50~ of **~23.5 dBA** (Figure 6). The modeled difference between the existing and predicted natural sound level (L~50~~impact~) at `r (pcode)` is shown in Figure 7 and provides a measure of how much anthropogenic noise is increasing the existing sound level above the natural sound level on an average summer day in the park. Across `r (pcode)`, the mean modeled sound level impact is **~9.1 dBA** (ranging from **~8.1 dBA** in the least impacted areas to **~9.7 dBA** in the most impacted areas). 
 
-For translating sound level impacts into functional effects (for human visitors and resident wildlife), an increase in background sound level of 3 dB produces an approximate decrease in listening area of 50%. In other words, by raising the sound level at `r (pcode)` by just 3 dB, the ability of listeners to hear the sounds around them is effectively cut in half. Furthermore, an increase of 7 dB leads to an approximate decrease in listening area of 80%. An increase of **~9.1 dBA** would reduce the listening area for wildlife and visitors by **~87.7%**. For example, if a predator can hear a potential prey animal in an area of 100 square feet in a setting with natural ambient sounds, that animal’s ability to hear would be reduced to **~22 square feet** if the sound levels were increased by the modeled average impact of **~9.1 dBA.**
+For translating sound level impacts into functional effects (for human visitors and resident wildlife), an increase in background sound level of 3 dB produces an approximate decrease in listening area of 50%. In other words, by raising the sound level at `r (pcode)` by just 3 dB, the ability of listeners to hear the sounds around them is effectively cut in half. Furthermore, an increase of 7 dB leads to an approximate decrease in listening area of 80%. An increase of **~9.1 dBA would reduce the listening area for wildlife and visitors by ~87.7%**. For example, if a predator can hear a potential prey animal in an area of 100 square feet in a setting with natural ambient sounds, that animal’s ability to hear would be reduced to **~22 square feet if the sound levels were increased by the modeled average impact of ~9.1 dBA.**
 :::
 
 
@@ -1065,16 +1216,15 @@ include_graphics(paste(park.image.folder,"modeled_l50.png", sep=""))
 ```
 
 :::{custom-style="sr Figure caption"}
-Figure X. Map of predicted existing acoustic levels in `r (pcode)` for an average summer day. 
+Figure `r(gsm_exist)`. Map of predicted existing acoustic levels in `r (pcode)` for an average summer day. 
 :::
-
-:::{custom-style="sr Alternate text"}
-Figure X. Map of predicted existing acoustic levels in `r (park)` for an average summer day. The color scale indicates median (L~50~) sound pressure level (in A-weighted decibels, or dBA), with 270-meter resolution. In the map, the park boundary is displayed by a green polygon and fills the entire extent of the main map frame. A dark blue to light blue color gradient color scheme follows the range of predicted existing sound levels, from **~20.1 dBA to 67.0 dBA**. The darkest shade of blue indicates lower existing sound levels and the light blue indicate the highest existing sound levels. The modeled data predicts an L~50~ of **~26.0 dBA** for all `r (pcode)`, which results in a darker blue shade of color displayed.
-:::
-
 :::{custom-style="sr Image credit"}
 ORIGINALLY PRODUCED BY NPS/NATURAL SOUNDS PROGRAM
 :::
+:::{custom-style="sr Alternate text"}
+Figure `r(gsm_exist)`. Map of predicted existing acoustic levels in `r (park)` for an average summer day. The color scale indicates median (L~50~) sound pressure level (in A-weighted decibels, or dBA), with 270-meter resolution. In the map, the park boundary is displayed by a green polygon and fills the entire extent of the main map frame. A dark blue to light blue color gradient color scheme follows the range of predicted existing sound levels, from **~20.1 dBA to 67.0 dBA**. The darkest shade of blue indicates lower existing sound levels and the light blue indicate the highest existing sound levels. The modeled data predicts an L~50~ of **~26.0 dBA** for all `r (pcode)`, which results in a darker blue shade of color displayed.
+:::
+
 
 ```{r mod_natural, echo=FALSE,out.width = '100%',ft.align="center"}
 # Include the graphic showing the modeled L50 natural sound levels
@@ -1084,16 +1234,16 @@ include_graphics(paste(park.image.folder,"modeled_l50_natural.png", sep=""))
 
 
 :::{custom-style="sr Figure caption"}
-Figure X. Map of predicted natural acoustic sound levels in `r (pcode)` for an average summer day. 
+Figure `r(gsm_natural)`. Map of predicted natural acoustic sound levels in `r (pcode)` for an average summer day. 
 :::
-
-:::{custom-style="sr Alternate text"}
-Figure X. Map of predicted natural acoustic sound levels in `r (park)` for an average summer day. The color scale indicates median natural (L~50~) sound pressure level (in A-weighted decibels, or dBA), with 270-meter resolution. In the map, the park boundary is displayed by a green polygon and fills the entire extent of the main map frame. A dark brown to dark blue color gradient color scheme follows the range of predicted natural sound levels, from **~20.0 dBA to 40.0 dBA**. The darkest shade of brown indicates lower natural sound levels and the dark blue indicate the highest existing sound levels. The modeled data predicts a natural L~50~ of 23.5 dBA for all `r (pcode)`, which results in a darker brown shade of color displayed. 
-:::
-
 :::{custom-style="sr Image credit"}
 ORIGINALLY PRODUCED BY NPS/NATURAL SOUNDS PROGRAM
 :::
+:::{custom-style="sr Alternate text"}
+Figure `r(gsm_natural)`. Map of predicted natural acoustic sound levels in `r (park)` for an average summer day. The color scale indicates median natural (L~50~) sound pressure level (in A-weighted decibels, or dBA), with 270-meter resolution. In the map, the park boundary is displayed by a green polygon and fills the entire extent of the main map frame. A dark brown to dark blue color gradient color scheme follows the range of predicted natural sound levels, from **~20.0 dBA to 40.0 dBA**. The darkest shade of brown indicates lower natural sound levels and the dark blue indicate the highest existing sound levels. The modeled data predicts a natural L~50~ of 23.5 dBA for all `r (pcode)`, which results in a darker brown shade of color displayed. 
+:::
+
+
 
 ```{r mod_impact, echo=FALSE,out.width = '100%',ft.align="center"}
 # Include the graphic showing the modeled L50 impact sound levels
@@ -1102,13 +1252,13 @@ include_graphics(paste(park.image.folder,"modeled_l50_impact.png", sep=""))
 ```
 
 :::{custom-style="sr Figure caption"}
-Figure X. Map of predicted acoustic impact levels in `r (pcode)` for an average summer day. 
+Figure `r(gsm_impact)`. Map of predicted acoustic impact levels in `r (pcode)` for an average summer day. 
 :::
-
-:::{custom-style="sr Alternate text"}
-Figure X. Map of predicted acoustic impact levels in `r (park)` for an average summer day. The color scale indicates how much man-made noise increases the sound level (in A-weighted decibels, or dBA), with 270 meter resolution. Black or dark blue colors indicate low impacts while yellow or white colors indicate greater impacts. The park boundary is displayed by a green polygon, while pixels inside the park boundary are mostly light blue. The mean acoustic impact level at the park is **~9.1 dBA**.
-:::
-
 :::{custom-style="sr Image credit"}
 ORIGINALLY PRODUCED BY NPS/NATURAL SOUNDS PROGRAM
 :::
+:::{custom-style="sr Alternate text"}
+Figure `r(gsm_impact)`. Map of predicted acoustic impact levels in `r (park)` for an average summer day. The color scale indicates how much man-made noise increases the sound level (in A-weighted decibels, or dBA), with 270 meter resolution. Black or dark blue colors indicate low impacts while yellow or white colors indicate greater impacts. The park boundary is displayed by a green polygon, while pixels inside the park boundary are mostly light blue. The mean acoustic impact level at the park is **~9.1 dBA**.
+:::
+
+
