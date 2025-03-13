@@ -579,7 +579,7 @@ include_graphics(paste(park.image.folder, "park_geographic_location.png", sep = 
 ```
 
 :::{custom-style="sr Figure caption"}
-Figure `r (map)`. Study sites in `r (park)`, `r(state)`, USA.
+Figure `r (map)`. Study sites in `r (park)`, `r (state)`, USA.
 :::
 :::{custom-style="sr Image credit"}
 ORIGINALLY PRODUCED BY NPS/NATURAL SOUNDS PROGRAM
@@ -1240,7 +1240,7 @@ Figure `r(gsm_natural)`. Map of predicted natural acoustic sound levels in `r (p
 ORIGINALLY PRODUCED BY NPS/NATURAL SOUNDS PROGRAM
 :::
 :::{custom-style="sr Alternate text"}
-Figure `r(gsm_natural)`. Map of predicted natural acoustic sound levels in `r (park)` for an average summer day. The color scale indicates median natural (L~50~) sound pressure level (in A-weighted decibels, or dBA), with 270-meter resolution. In the map, the park boundary is displayed by a green polygon and fills the entire extent of the main map frame. A dark brown to dark blue color gradient color scheme follows the range of predicted natural sound levels, from **~20.0 dBA to 40.0 dBA**. The darkest shade of brown indicates lower natural sound levels and the dark blue indicate the highest existing sound levels. The modeled data predicts a natural L~50~ of 23.5 dBA for all `r (pcode)`, which results in a darker brown shade of color displayed. 
+Figure `r (gsm_natural)`. Map of predicted natural acoustic sound levels in `r (park)` for an average summer day. The color scale indicates median natural (L~50~) sound pressure level (in A-weighted decibels, or dBA), with 270-meter resolution. In the map, the park boundary is displayed by a green polygon and fills the entire extent of the main map frame. A dark brown to dark blue color gradient color scheme follows the range of predicted natural sound levels, from **~20.0 dBA to 40.0 dBA**. The darkest shade of brown indicates lower natural sound levels and the dark blue indicate the highest existing sound levels. The modeled data predicts a natural L~50~ of 23.5 dBA for all `r (pcode)`, which results in a darker brown shade of color displayed. 
 :::
 
 
@@ -1252,13 +1252,13 @@ include_graphics(paste(park.image.folder,"modeled_l50_impact.png", sep=""))
 ```
 
 :::{custom-style="sr Figure caption"}
-Figure `r(gsm_impact)`. Map of predicted acoustic impact levels in `r (pcode)` for an average summer day. 
+Figure `r (gsm_impact)`. Map of predicted acoustic impact levels in `r (pcode)` for an average summer day. 
 :::
 :::{custom-style="sr Image credit"}
 ORIGINALLY PRODUCED BY NPS/NATURAL SOUNDS PROGRAM
 :::
 :::{custom-style="sr Alternate text"}
-Figure `r(gsm_impact)`. Map of predicted acoustic impact levels in `r (park)` for an average summer day. The color scale indicates how much man-made noise increases the sound level (in A-weighted decibels, or dBA), with 270 meter resolution. Black or dark blue colors indicate low impacts while yellow or white colors indicate greater impacts. The park boundary is displayed by a green polygon, while pixels inside the park boundary are mostly light blue. The mean acoustic impact level at the park is **~9.1 dBA**.
+Figure `r (gsm_impact)`. Map of predicted acoustic impact levels in `r (park)` for an average summer day. The color scale indicates how much man-made noise increases the sound level (in A-weighted decibels, or dBA), with 270 meter resolution. Black or dark blue colors indicate low impacts while yellow or white colors indicate greater impacts. The park boundary is displayed by a green polygon, while pixels inside the park boundary are mostly light blue. The mean acoustic impact level at the park is **~9.1 dBA**.
 :::
 
 
